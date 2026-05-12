@@ -1,0 +1,9 @@
+This repostiry contains sevaral part of codes utilized in the exome-seq and metabolomics combination analysis of early-onset schizophrenia. Sevearal parts are included:
+
+1. Pipeline to detect variants and CNVs from exome-seq data
+2. Piepline to detect DEMs from LC-MS/MS data
+3. In-house R scripts to analyze
+  (i) the association between gene variants and clinical symptome scores
+  (ii) the corerlation betwwen metabolite intensity and clinical symptome scores
+  (iii) the association betwwen gene variants and metabolite intensity
+  (iv) construction the protein-metabolite network
