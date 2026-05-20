@@ -1,9 +1,48 @@
-This repostiry contains sevaral part of codes utilized in the exome-seq and metabolomics combination analysis of early-onset schizophrenia. Sevearal parts are included:
+# Exome-Seq and Metabolomics Integration Analysis for Early-Onset Schizophrenia
 
-1. Pipeline to detect variants and CNVs from exome-seq data
-2. Piepline to detect DEMs from LC-MS/MS data
-3. In-house R scripts to analyze
-  (i) the association between gene variants and clinical symptome scores
-  (ii) the corerlation betwwen metabolite intensity and clinical symptome scores
-  (iii) the association betwwen gene variants and metabolite intensity
-  (iv) construction the protein-metabolite network
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+This repository contains code utilized in the integrative analysis of **exome sequencing (exome-seq)** and **metabolomics** data for **early-onset schizophrenia (EOS)**.
+
+## Contents
+
+1. [Variant & CNV Detection Pipeline](#1-variant--cnv-detection-pipeline)
+2. [Differential Metabolite Analysis Pipeline](#2-differential-metabolite-analysis-pipeline)
+3. [In-house R Scripts for Association Analyses](#3-in-house-r-scripts-for-association-analyses)
+
+---
+
+## 1. Variant & CNV Detection Pipeline
+
+Pipeline to detect **single nucleotide variants (SNVs)** and **copy number variations (CNVs)** from exome-seq data.
+
+## 2. Differential Metabolite Analysis Pipeline
+
+Pipeline to detect **differentially expressed metabolites (DEMs)** from LC-MS/MS data.
+
+## 3. In-house R Scripts for Association Analyses
+
+| Analysis | Description | Script |
+|----------|-------------|--------|
+| (i) | Association between **gene variants** and **clinical symptom scores** | `R/variant_symptom_assoc.R` |
+| (ii) | Correlation between **metabolite intensity** and **clinical symptom scores** | `R/metabolite_symptom_corr.R` |
+| (iii) | Association between **gene variants** and **metabolite intensity** | `R/variant_metabolite_assoc.R` |
+| (iv) | Construction of **protein-metabolite network** | `R/protein_metabolite_network.R` |
+
+---
+
+## Requirements
+
+- **WGS/WES Pipeline**: [GATK](https://gatk.broadinstitute.org/), [CNVkit](https://cnvkit.readthedocs.io/), or similar
+- **Metabolomics**: [XCMS](https://bioconductor.org/packages/release/bioc/html/xcms.html), [MetaboAnalystR](https://www.metaboanalyst.ca/)
+- **R packages**: `tidyverse`, `limma`, `igraph`, `corrr`, `broom`
+
+## Citation
+
+If you use this code, please cite:
+
+> [Your Paper Title]. *Journal Name*. Year. DOI: [link]
+
+## Contact
+
+For questions or issues, please open a [GitHub Issue](../../issues) or contact [your-email@institution.edu](mailto:your-email@institution.edu).
