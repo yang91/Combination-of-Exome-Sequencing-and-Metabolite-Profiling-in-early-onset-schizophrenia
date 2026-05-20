@@ -33,9 +33,13 @@ Pipeline to detect **differentially expressed metabolites (DEMs)** from LC-MS/MS
 
 ## **Requirements**
 
-- **WGS/WES Pipeline**: [GATK], [XHMM]
+- **WGS/WES Pipeline**: [BWA],[Bedtools],[Picard],[GATK], [XHMM]
 - **Metabolomics**: [XCMS][Masscleaner][Massstat]
 - **R packages**: `tidyverse`, `limma`, `igraph`, `corrr`, `broom`
+
+## **Notice**
+
+- Please modify the parameter and path according to your enviroment settings.
 
 ## **Citation**
 
