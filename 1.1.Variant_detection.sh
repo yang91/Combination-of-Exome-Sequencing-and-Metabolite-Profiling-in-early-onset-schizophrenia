@@ -300,7 +300,7 @@ ${GATK} ApplyVQSR --java-options "-Xmx5g -Xms5g" \
   -V "${GT_GVCF}" \
   --recal-file "${COMBINE_DIR}/${GROUP}.indels.recal" \
   --tranches-file "${COMBINE_DIR}/${GROUP}.INDELs.tranches" \
-  --truth-sensitivity-filter-level 99.7 --create-output-variant-index true -mode INDEL \
+  --truth-sensitivity-filter-level 99.9 --create-output-variant-index true -mode INDEL \
   >> "${COMBINE_DIR}/VQSR.log" 2>&1
 
 ${GATK} ApplyVQSR --java-options "-Xmx5g -Xms5g" \
@@ -308,7 +308,7 @@ ${GATK} ApplyVQSR --java-options "-Xmx5g -Xms5g" \
   -V "${COMBINE_DIR}/${GROUP}.indels.recalibrated.vcf" \
   --recal-file "${COMBINE_DIR}/${GROUP}.indels.recal" \
   --tranches-file "${COMBINE_DIR}/${GROUP}.SNPs.tranches" \
-  --truth-sensitivity-filter-level 99.7 --create-output-variant-index true \
+  --truth-sensitivity-filter-level 99.9 --create-output-variant-index true \
   >> "${COMBINE_DIR}/VQSR.log" 2>&1
 
 echo ""
