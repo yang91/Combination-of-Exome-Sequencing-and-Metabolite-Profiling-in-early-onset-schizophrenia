@@ -1,26 +1,26 @@
-# Exome-Seq and Metabolomics Integration Analysis for Early-Onset Schizophrenia
-
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+# **Exome-Seq and Metabolomics Integration Analysis for Early-Onset Schizophrenia**
 
 This repository contains code utilized in the integrative analysis of **exome sequencing (exome-seq)** and **metabolomics** data for **early-onset schizophrenia (EOS)**.
 
-## Contents
+---
 
-1. [Variant & CNV Detection Pipeline](#1-variant--cnv-detection-pipeline)
-2. [Differential Metabolite Analysis Pipeline](#2-differential-metabolite-analysis-pipeline)
-3. [In-house R Scripts for Association Analyses](#3-in-house-r-scripts-for-association-analyses)
+## **Contents**
+
+1. [**Variant & CNV Detection Pipeline**](#1-variant--cnv-detection-pipeline)
+2. [**Differential Metabolite Analysis Pipeline**](#2-differential-metabolite-analysis-pipeline)
+3. [**In-house R Scripts for Association Analyses**](#3-in-house-r-scripts-for-association-analyses)
 
 ---
 
-## 1. Variant & CNV Detection Pipeline
+## **1. Variant & CNV Detection Pipeline**
 
 Pipeline to detect **single nucleotide variants (SNVs)** and **copy number variations (CNVs)** from exome-seq data.
 
-## 2. Differential Metabolite Analysis Pipeline
+## **2. Differential Metabolite Analysis Pipeline**
 
 Pipeline to detect **differentially expressed metabolites (DEMs)** from LC-MS/MS data.
 
-## 3. In-house R Scripts for Association Analyses
+## **3. In-house R Scripts for Association Analyses**
 
 | Analysis | Description | Script |
 |----------|-------------|--------|
@@ -31,18 +31,17 @@ Pipeline to detect **differentially expressed metabolites (DEMs)** from LC-MS/MS
 
 ---
 
-## Requirements
+## **Requirements**
 
-- **WGS/WES Pipeline**: [GATK](https://gatk.broadinstitute.org/), [CNVkit](https://cnvkit.readthedocs.io/), or similar
-- **Metabolomics**: [XCMS](https://bioconductor.org/packages/release/bioc/html/xcms.html), [MetaboAnalystR](https://www.metaboanalyst.ca/)
+- **WGS/WES Pipeline**: [GATK], [XHMM]
+- **Metabolomics**: [XCMS][Masscleaner][Massstat]
 - **R packages**: `tidyverse`, `limma`, `igraph`, `corrr`, `broom`
 
-## Citation
+## **Citation**
 
 If you use this code, please cite:
 
-> [Your Paper Title]. *Journal Name*. Year. DOI: [link]
 
-## Contact
+## **Contact**
 
-For questions or issues, please open a [GitHub Issue](../../issues) or contact [your-email@institution.edu](mailto:your-email@institution.edu).
+For questions or issues, please open contact yxx1123@smu.edu.cn.
