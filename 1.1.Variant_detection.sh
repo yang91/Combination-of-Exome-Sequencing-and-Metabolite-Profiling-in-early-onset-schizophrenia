@@ -15,15 +15,15 @@ REF_INDEX_DIR="./Ref_and_Index/"
 
 # Reference/index path
 BWA_INDEX="${REF_INDEX_DIR}/BWA_INDEX"
-REF_FA="${REF_INDEX_DIR}/Homo_sapiens_assembly38.fa"
-BED_FILE="${REF_INDEX_DIR}//T086V4_MT.merged.success.liftover.to.hg38.bed"
-DBSNP="${REF_INDEX_DIR}//dbsnp_144.hg38.withchr.vcf"
-KNOWN_INDEL="${REF_INDEX_DIR}/Homo_sapiens_assembly38.known_indels.vcf"
-GOLDEN_INDEL="${REF_INDEX_DIR}/Mills_and_1000G_gold_standard.indels.hg38.vcf"
-HAPMAP="${REF_INDEX_DIR}/hapmap_3.3.hg38.vcf.gz"
-OMNI="${REF_INDEX_DIR}/1000G_omni2.5.hg38.vcf.gz"
-OKG="${REF_INDEX_DIR}/1000G_phase1.snps.high_confidence.hg38.vcf.gz"
-AXIOM="${REF_INDEX_DIR}/Axiom_Exome_Plus.genotypes.all_populations.poly.hg38.vcf.gz"
+BED_FILE="${REF_INDEX_DIR}/T086V4_MT.merged.success.liftover.to.hg38.bed"
+REF_FA="${REF_INDEX_DIR}/GATK-hg38bundle/Homo_sapiens_assembly38.fa"
+DBSNP="${REF_INDEX_DIR}/GATK-hg38bundle/dbsnp_144.hg38.withchr.vcf"
+KNOWN_INDEL="${REF_INDEX_DIR}/GATK-hg38bundle/Homo_sapiens_assembly38.known_indels.vcf"
+GOLDEN_INDEL="${REF_INDEX_DIR}/GATK-hg38bundle/Mills_and_1000G_gold_standard.indels.hg38.vcf"
+HAPMAP="${REF_INDEX_DIR}/GATK-hg38bundle/hapmap_3.3.hg38.vcf.gz"
+OMNI="${REF_INDEX_DIR}/GATK-hg38bundle/1000G_omni2.5.hg38.vcf.gz"
+OKG="${REF_INDEX_DIR}/GATK-hg38bundle/1000G_phase1.snps.high_confidence.hg38.vcf.gz"
+AXIOM="${REF_INDEX_DIR}/GATK-hg38bundle/Axiom_Exome_Plus.genotypes.all_populations.poly.hg38.vcf.gz"
 
 # parameters
 THREADS=6
