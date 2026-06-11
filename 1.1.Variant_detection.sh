@@ -1,4 +1,6 @@
 ## Please run this pipeline for patient samples and normal sampls seperately
+## Before running, please make sure that you've already added all need tools excuceable path to your environment, including Picard ToolKit, GATK, BWA, Bedtools.
+## Please store or use the soft links to guarantee all the seqdata, reference annotations and output results would be stored in the same project directory.
 
 #!/usr/bin/bash
 # bwa + bedtools + picard + GATK
@@ -6,11 +8,10 @@
 # tag
 GROUP="SCZ" # modify this to NOR if you are running normal sample analysis
 
-# software path
-PICARD="/PATH/TO/YOUR/picard.jar"
-GATK="/PATH/TO/YOUR/gatk"
-BWA="/PATH/TO/YOUR/bwa"
-BEDTOOLS="/PATH/TO/YOUR/bedtools"
+# input/output path
+PROJECT_DIR="./"
+SEQDATA_DIR="./ExomeSeq-Data"
+RESULT_DIR="./ExomeSeq-Result"
 
 # Reference/index path
 REF_DIR="/PATH/TO/YOUR/GATK-hg38bundle"
@@ -24,11 +25,6 @@ HAPMAP="/PATH/TO/YOUR/hapmap_3.3.hg38.vcf.gz"
 OMNI="/PATH/TO/YOUR/1000G_omni2.5.hg38.vcf.gz"
 OKG="/PATH/TO/YOUR/1000G_phase1.snps.high_confidence.hg38.vcf.gz"
 AXIOM="/PATH/TO/YOUR/Axiom_Exome_Plus.genotypes.all_populations.poly.hg38.vcf.gz"
-
-# input/output path
-PROJECT_DIR="/PATH/TO/YOUR/PROJECT"
-SEQDATA_DIR="/PATH/TO/YOUR/EXOME-FASTQ"
-RESULT_DIR="/PATH/TO/YOUR/EXOME-RESULT"
 
 # parameters
 THREADS=6
@@ -88,7 +84,7 @@ for SAMPLE in "${SAMPLES[@]}"; do
     #-------------------------------------------------------------------------------
     echo "[${SAMPLE}] Step 1/6: BWA MEM alignment ..."
     if [[ ! -f "${SAM}" ]]; then
-        ${BWA} mem -t ${THREADS} -M \
+        bwa mem -t ${THREADS} -M \
             "${BWA_INDEX}" "${R1}" "${R2}" > "${SAM}" 2>> "${LOG}"
         
         if [[ $? -ne 0 ]]; then
@@ -104,7 +100,7 @@ for SAMPLE in "${SAMPLES[@]}"; do
     #-------------------------------------------------------------------------------
     echo "[${SAMPLE}] Step 2/6: Picard MarkDuplicates ..."
     if [[ ! -f "${UNALI_BAM}" ]]; then
-        java -jar ${PICARD_JAR} FastqToSam FASTQ="${R1}" FASTQ2="${R2}" \
+        java -jar picard.jar FastqToSam FASTQ="${R1}" FASTQ2="${R2}" \
             OUTPUT="{UNALI_BAM}" READ_GROUP_NAME=A00682 SAMPLE_NAME=${SAMPLE} \
             LIBRARY_NAME=Illumina PLATFORM_UNIT=HJVWVDSXX PLATFORM=Illumina \
              >> "${LOG}" 2>&1
@@ -118,7 +114,7 @@ for SAMPLE in "${SAMPLES[@]}"; do
     fi
 
     if [[ ! -f "${MERGED_BAM}" ]]; then
-        java -jar ${PICARD_JAR} MergeBamAlignment ALIGNED="${SAM}" UNMAPPED="${UNALI_BAM}" \
+        java -jar picard.jar MergeBamAlignment ALIGNED="${SAM}" UNMAPPED="${UNALI_BAM}" \
         O="${MERGED_BAM}" R="${REF_FA}" >> "${LOG}" 2>&1
         
         if [[ $? -ne 0 ]]; then
@@ -130,7 +126,7 @@ for SAMPLE in "${SAMPLES[@]}"; do
     fi
 
     if [[ ! -f "${MARKDUP_BAM}" ]]; then
-        java -jar ${PICARD_JAR} MarkDuplicates I="${MERGED_BAM}" O="${MARKDUP_BAM}" \
+        java -jar picard.jar MarkDuplicates I="${MERGED_BAM}" O="${MARKDUP_BAM}" \
             M="${MARKDUP_METRICS}" TAGGING_POLICY=All ASSUME_SORT_ORDER=coordinate \
             CREATE_INDEX=TRUE >> "${LOG}" 2>&1
         
@@ -147,7 +143,7 @@ for SAMPLE in "${SAMPLES[@]}"; do
     #-------------------------------------------------------------------------------
     echo "[${SAMPLE}] Step 3/6: bedtools genomecov ..."
     if [[ ! -f "${GENOMECOV}" ]]; then
-        ${BEDTOOLS} genomecov -ibam "${MARKDUP_BAM}" -bga -g "${REF_FA}" > "${GENOMECOV}" \
+        bedtools genomecov -ibam "${MARKDUP_BAM}" -bga -g "${REF_FA}" > "${GENOMECOV}" \
             2>> "${LOG}"
         
         if [[ $? -ne 0 ]]; then
@@ -163,7 +159,7 @@ for SAMPLE in "${SAMPLES[@]}"; do
     #-------------------------------------------------------------------------------
     echo "[${SAMPLE}] Step 4/6: GATK for single sample ..."
     if [[ ! -f "${RECAL_TABLE}" ]]; then
-        ${GATK} BaseRecalibrator -R "${REF_FA}" -I "${MARKDUP_BAM}" -O "${RECAL_TABLE}" \
+        gatk BaseRecalibrator -R "${REF_FA}" -I "${MARKDUP_BAM}" -O "${RECAL_TABLE}" \
             --known-sites "${DBSNP}" --known-sites "${KNOWN_INDEL}" --known-sites "${GOLDEN_INDEL}" \
             -L "${BED_FILE}" --interval-padding 200 >> "${LOG}" 2>&1
         
@@ -176,7 +172,7 @@ for SAMPLE in "${SAMPLES[@]}"; do
     fi
 
     if [[ ! -f "${BQSR_BAM}" ]]; then
-        ${GATK} ApplyBQSR -R "${REF_FA}" -I "${MARKDUP_BAM}" --bqsr-recal-file "${RECAL_TABLE}" \
+        gatk ApplyBQSR -R "${REF_FA}" -I "${MARKDUP_BAM}" --bqsr-recal-file "${RECAL_TABLE}" \
             -O "${BQSR_BAM}" >> "${LOG}" 2>&1
         
         if [[ $? -ne 0 ]]; then
@@ -188,7 +184,7 @@ for SAMPLE in "${SAMPLES[@]}"; do
     fi
 
     if [[ ! -f "${GVCF}" ]]; then
-        ${GATK} --java-options "-Xmx4g" HaplotypeCaller -R "${REF_FA}" \
+        gatk --java-options "-Xmx4g" HaplotypeCaller -R "${REF_FA}" \
             -I "${BQSR_BAM}" -O "${GVCF}" -ERC GVCF -G StandardAnnotation \
             -G StandardHCAnnotation -G AS_StandardAnnotation \
             -L "${BED_FILE}" --interval-padding 200  >> "${LOG}" 2>&1
@@ -251,7 +247,7 @@ else
 
     echo "[Information] CombineGVCF ${#VARIANT_ARGS[@]} files ..."
 
-    ${GATK} --java-options "-Xmx4g -Xms4g" CombineGVCFs -R "${REF_FA}" \
+    gatk --java-options "-Xmx4g -Xms4g" CombineGVCFs -R "${REF_FA}" \
         "${VARIANT_ARGS[@]}" \
         -O "${COMBINED_GVCF}" >> "${COMBINE_DIR}/CombineGVCFs.log" 2>&1
 
@@ -263,10 +259,10 @@ else
     fi
 fi
 
-${GATK} GenotypeGVCFs --java-options "-Xmx4g" -R "${REF_FA}" 、
+gatk GenotypeGVCFs --java-options "-Xmx4g" -R "${REF_FA}" 、
   -V "${COMBINED_GVCF}" -O "${GT_GVCF}" >> "${COMBINE_DIR}/GenotypeGVCFs.log" 2>&1
 
-${GATK} VariantRecalibrator --java-options "-Xmx4g -Xms4g" \
+gatk VariantRecalibrator --java-options "-Xmx4g -Xms4g" \
   -V "${GT_GVCF}" \
   -O "${COMBINE_DIR}/${GROUP}.SNPs.recal" \
   --tranches-file "${COMBINE_DIR}/${GROUP}.SNPs.tranches" \
@@ -281,7 +277,7 @@ ${GATK} VariantRecalibrator --java-options "-Xmx4g -Xms4g" \
   --resource:dbsnp,known=true,training=false,truth=false,prior=7 "${DBSNP}" \
   >> "${COMBINE_DIR}/VQSR.log" 2>&1
 
-${GATK} VariantRecalibrator --java-options "-Xmx24g -Xms24g" \
+gatk VariantRecalibrator --java-options "-Xmx24g -Xms24g" \
   -V "${GT_GVCF}" \
   -O "${COMBINE_DIR}/${GROUP}.indels.recal" \
   --tranches-file "${COMBINE_DIR}/${GROUP}.INDELs.tranches" \
@@ -295,7 +291,7 @@ ${GATK} VariantRecalibrator --java-options "-Xmx24g -Xms24g" \
   --resource:dbsnp,known=true,training=false,truth=false,prior=2 "${DBSNP}" \
   >> "${COMBINE_DIR}/VQSR.log" 2>&1
 
-${GATK} ApplyVQSR --java-options "-Xmx5g -Xms5g" \
+gatk ApplyVQSR --java-options "-Xmx5g -Xms5g" \
   -O "${COMBINE_DIR}/${GROUP}.indels.recalibrated.vcf" \
   -V "${GT_GVCF}" \
   --recal-file "${COMBINE_DIR}/${GROUP}.indels.recal" \
@@ -303,7 +299,7 @@ ${GATK} ApplyVQSR --java-options "-Xmx5g -Xms5g" \
   --truth-sensitivity-filter-level 99.9 --create-output-variant-index true -mode INDEL \
   >> "${COMBINE_DIR}/VQSR.log" 2>&1
 
-${GATK} ApplyVQSR --java-options "-Xmx5g -Xms5g" \
+gatk ApplyVQSR --java-options "-Xmx5g -Xms5g" \
   -O "${COMBINE_DIR}/${GROUP}.SNPs_and_indels.recalibrated.vcf" \
   -V "${COMBINE_DIR}/${GROUP}.indels.recalibrated.vcf" \
   --recal-file "${COMBINE_DIR}/${GROUP}.indels.recal" \
