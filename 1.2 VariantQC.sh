@@ -1,25 +1,30 @@
+## Before running, please make sure that you've already added all need tools excuceable path to your environment, including Picard ToolKit, GATK, BWA, Bedtools.
+## Please store or use the soft links to guarantee all the seqdata, reference annotations and output results would be stored in the same project directory.
+
 #!/usr/bin/bash
 set -euo pipefai
 
 ###################################################################################
 # Set environment parameters
-# tools
-BCFTOOLS="/PATH/TO/YOUR/bedtools"
-PICARD="/PATH/TO/YOUR/picard.jar"
-GATK="/PATH/TO/YOUR/gatk"
-ANNOVAR="/PATH/TO/YOUR/annovar"
+# input/output path
+RESULT_DIR="./ExomeSeq-Result/"
+REF_INDEX_DIR="./Ref_and_Index/"
+
 # reference and annotations
-REF_FA="/PATH/TO/YOUR/Homo_sapiens_assembly38.fa"
-DBSNP="/PATH/TO/YOUR/dbsnp_144.hg38.withchr.vcf"
+REF_FA="${REF_INDEX_DIR}/Homo_sapiens_assembly38.fa"
+DBSNP="${REF_INDEX_DIR}/dbsnp_144.hg38.withchr.vcf"
+
 # input vcf files
-NOR_GT_GVCF="PATH/TO/YOUR/GATK/NOR.GenotypeGVCFs.vcf.gz"
-SCZ_GT_GVCF="PATH/TO/YOUR/GATK/SCZ.GenotypeGVCFs.vcf.gz"
-NOR_VQSR_VCF="PATH/TO/YOUR/GATK/NOR.SNPs_and_indels.recalibrated.vcf.gz"
-SCZ_VQSR_VCF="PATH/TO/YOUR/GATK/SCZ.SNPs_and_indels.recalibrated.vcf.gz"
+NOR_GT_GVCF="${RESULT_DIR}/GATK/NOR.GenotypeGVCFs.vcf.gz"
+SCZ_GT_GVCF="${RESULT_DIR}/GATK/SCZ.GenotypeGVCFs.vcf.gz"
+NOR_VQSR_VCF="${RESULT_DIR}/GATK/NOR.SNPs_and_indels.recalibrated.vcf.gz"
+SCZ_VQSR_VCF="${RESULT_DIR}/GATK/SCZ.SNPs_and_indels.recalibrated.vcf.gz"
+
 # low complexity bed file
-LOW_COMPLEXITY_BED="/PATH/TO/YOUR/low_complexity_targets.bed"
-# directory settings
-LOGDIR="/PATH/TO/YOUR/PROJECT/logs"
+LOW_COMPLEXITY_BED="${REF_INDEX_DIR}/low_complexity_targets.bed"
+
+# log file settings
+LOGDIR="./Logs/"
 mkdir -p "$LOGDIR"
 
 ###################################################################################
@@ -42,15 +47,15 @@ check_file() {
 STEP=1
 log "=== Step $STEP: Merging samples ==="
 
-bcftools merge -0 -m none -o merge.vcf.gz -O z "${NOR_GT_GVCF}" "${SCZ_GT_GVCF}"
-bcftools merge -0 -m none -o merge.VQSR.vcf.gz -O z "${NOR_VQSR_VCF}" "${SCZ_VQSR_VCF}"
+bcftools merge -0 -m none -o "${REF_INDEX_DIR}/GATK/merge.vcf.gz" -O z "${NOR_GT_GVCF}" "${SCZ_GT_GVCF}"
+bcftools merge -0 -m none -o "${REF_INDEX_DIR}/GATK/merge.VQSR.vcf.gz" -O z "${NOR_VQSR_VCF}" "${SCZ_VQSR_VCF}"
 log "Step $STEP completed: merge.vcf.gz,  merge.VQSR.vcf.gz"
 
 # Step2: split mulit-allele variants #
 STEP=2
 log "=== Step $STEP: LeftAlignAndTrimVariants (merge.vcf.gz) ==="
 
-$GATK LeftAlignAndTrimVariants -R "$REF_FA" -V merge.vcf.gz -O merge.split-multi-allelics.vcf.gz \
+gatk LeftAlignAndTrimVariants -R "$REF_FA" -V ${REF_INDEX_DIR}/GATK/merge.vcf.gz" -O "${REF_INDEX_DIR}/GATK/merge.split-multi-allelics.vcf.gz" \
    --max-indel-length 500 --split-multi-allelics --dont-trim-alleles --keep-original-ac
 log "Step $STEP completed"
 
@@ -58,38 +63,38 @@ log "Step $STEP completed"
 STEP=3
 log "=== Step $STEP: CollectVariantCallingMetrics (merge) ==="
 
-java -jar "$PICARD" CollectVariantCallingMetrics I=merge.split-multi-allelics.vcf.gz \
-    DBSNP="$DBSNP" O=merge.split-multi-allelics_metrics
+java -jar picard.jar CollectVariantCallingMetrics I=merge.split-multi-allelics.vcf.gz \
+    DBSNP="$DBSNP" O="${REF_INDEX_DIR}/picard/merge.split-multi-allelics_metrics"
 log "Step $STEP completed"
 
 # ==================== 步骤4: VQSR后的拆分（注意：需要merge.VQSR.vcf.gz存在） ====================
 # Step4: split mulit-allele variants (merge.VQSR.vcf.gz) #
 STEP=4
 log "=== Step $STEP: LeftAlignAndTrimVariants (VQSR) ==="
-$GATK LeftAlignAndTrimVariants -R "$REF_FA" -V merge.VQSR.vcf.gz -O merge.VQSR.split-multi-allelics.vcf.gz \
+gatk LeftAlignAndTrimVariants -R "$REF_FA" -V "${REF_INDEX_DIR}/GATK/merge.VQSR.vcf.gz" -O "${REF_INDEX_DIR}/GATK/merge.VQSR.split-multi-allelics.vcf.gz" \
    --max-indel-length 500 --split-multi-allelics --dont-trim-alleles --keep-original-ac
 log "Step $STEP completed"
 
 # Step5: CollectVariantCallingMetric (merge.VQSR.vcf.gz) #
 STEP=5
 log "=== Step $STEP: CollectVariantCallingMetrics (VQSR) ==="
-java -jar "$PICARD" CollectVariantCallingMetrics I=merge.VQSR.split-multi-allelics.vcf.gz \
-    DBSNP="$DBSNP" O=merge.VQSR.split-multi-allelics_metrics
+java -jar picard.jar CollectVariantCallingMetrics I=merge.VQSR.split-multi-allelics.vcf.gz \
+    DBSNP="$DBSNP" O="${REF_INDEX_DIR}/picard/merge.VQSR.split-multi-allelics_metrics"
 log "Step $STEP completed"
 
 # Step6: Remove low complexity region #
 STEP=6
 log "=== Step $STEP: Remove low complexity regions ==="
 check_file "$LOW_COMPLEXITY_BED"
-$GATK VariantFiltration -R "$REF_FA" -XL "$LOW_COMPLEXITY_BED" \
-    -V merge.VQSR.split-multi-allelics.vcf.gz -O merge.VQSR.low_complexity.vcf.gz
+gatk VariantFiltration -R "$REF_FA" -XL "$LOW_COMPLEXITY_BED" \
+    -V "${REF_INDEX_DIR}/GATK/merge.VQSR.split-multi-allelics.vcf.gz" -O "${REF_INDEX_DIR}/GATK/merge.VQSR.low_complexity.vcf.gz"
 log "Step $STEP completed"
 
 # Step7: Remove low complexity region #
 STEP=7
 log "=== Step $STEP: CollectVariantCallingMetrics (low complexity filtered) ==="
-java -jar "$PICARD" CollectVariantCallingMetrics I=merge.VQSR.low_complexity.vcf.gz \
-    DBSNP="$DBSNP" O=merge.VQSR.low_complexity_metrics
+java -jar picard.jar CollectVariantCallingMetrics I="${REF_INDEX_DIR}/GATK/merge.VQSR.low_complexity.vcf.gz" \
+    DBSNP="$DBSNP" O="${REF_INDEX_DIR}/picard/merge.VQSR.low_complexity_metrics"
 log "Step $STEP completed"
 
 # Step8: Hail QC analysis by python#
@@ -98,7 +103,7 @@ log "=== Step $STEP: Hail QC Analysis ==="
 
 if [[ ! -f "merge.VQSR.low_complexity.vcf.bgz" ]]; then
     log "Converting vcf.gz to bgz format for Hail..."
-    zcat merge.VQSR.low_complexity.vcf.gz | bgzip -c > merge.VQSR.low_complexity.vcf.bgz
+    zcat "${REF_INDEX_DIR}/GATK/merge.VQSR.low_complexity.vcf.gz" | bgzip -c > "${REF_INDEX_DIR}/GATK/merge.VQSR.low_complexity.vcf.bgz"
 fi
 
 cat > run_hail_qc.py << 'PYEOF'
@@ -107,8 +112,8 @@ import sys
 
 hl.init(log='hail_qc.log')
 
-vcf_path = 'merge.VQSR.low_complexity.vcf.bgz'
-mt_path = 'merge.VQSR.low_complexity.mt'
+vcf_path = "${REF_INDEX_DIR}/GATK/merge.VQSR.low_complexity.vcf.bgz"
+mt_path = "${REF_INDEX_DIR}/picard/merge.VQSR.low_complexity_metrics'
 
 hl.import_vcf(vcf_path, reference_genome='GRCh38').write(mt_path, overwrite=True)
 mt = hl.read_matrix_table(mt_path)
@@ -140,8 +145,8 @@ mt = mt.filter_rows((mt.variant_qc.AF[1] < 0.05) & (mt.variant_qc.gq_stats.mean 
 print('rare variants: Samples: %d  Variants: %d' % (mt.count_cols(), mt.count_rows()))
 
 # Export the final after-filtering vcf file
-hl.export_vcf(mt, 'final.QC.maf_0.05.vcf.bgz')
-print("Final VCF exported to: final.QC.maf_0.05.vcf.bgz")
+hl.export_vcf(mt, '${REF_INDEX_DIR}/final.QC.maf_0.05.vcf.bgz')
+print('Final VCF exported to: ${REF_INDEX_DIR}/final.QC.maf_0.05.vcf.bgz')
 PYEOF
 
 python run_hail_qc.py
