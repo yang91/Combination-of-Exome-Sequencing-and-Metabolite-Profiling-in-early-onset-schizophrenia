@@ -9,22 +9,21 @@
 GROUP="SCZ" # modify this to NOR if you are running normal sample analysis
 
 # input/output path
-PROJECT_DIR="./"
 SEQDATA_DIR="./ExomeSeq-Data"
 RESULT_DIR="./ExomeSeq-Result"
+REF_INDEX_DIR="./Ref_and_Index/"
 
 # Reference/index path
-REF_DIR="/PATH/TO/YOUR/GATK-hg38bundle"
-BWA_INDEX="/PATH/TO/YOUR/BWA_INDEX"
-REF_FA="/PATH/TO/YOUR/Homo_sapiens_assembly38.fa"
-BED_FILE="/PATH/TO/YOUR/T086V4_MT.merged.success.liftover.to.hg38.bed"
-DBSNP="/PATH/TO/YOUR/dbsnp_144.hg38.withchr.vcf"
-KNOWN_INDEL="/PATH/TO/YOUR/Homo_sapiens_assembly38.known_indels.vcf"
-GOLDEN_INDEL="/PATH/TO/YOUR/Mills_and_1000G_gold_standard.indels.hg38.vcf"
-HAPMAP="/PATH/TO/YOUR/hapmap_3.3.hg38.vcf.gz"
-OMNI="/PATH/TO/YOUR/1000G_omni2.5.hg38.vcf.gz"
-OKG="/PATH/TO/YOUR/1000G_phase1.snps.high_confidence.hg38.vcf.gz"
-AXIOM="/PATH/TO/YOUR/Axiom_Exome_Plus.genotypes.all_populations.poly.hg38.vcf.gz"
+BWA_INDEX="${REF_INDEX_DIR}/BWA_INDEX"
+REF_FA="${REF_INDEX_DIR}/Homo_sapiens_assembly38.fa"
+BED_FILE="${REF_INDEX_DIR}//T086V4_MT.merged.success.liftover.to.hg38.bed"
+DBSNP="${REF_INDEX_DIR}//dbsnp_144.hg38.withchr.vcf"
+KNOWN_INDEL="${REF_INDEX_DIR}/Homo_sapiens_assembly38.known_indels.vcf"
+GOLDEN_INDEL="${REF_INDEX_DIR}/Mills_and_1000G_gold_standard.indels.hg38.vcf"
+HAPMAP="${REF_INDEX_DIR}/hapmap_3.3.hg38.vcf.gz"
+OMNI="${REF_INDEX_DIR}/1000G_omni2.5.hg38.vcf.gz"
+OKG="${REF_INDEX_DIR}/1000G_phase1.snps.high_confidence.hg38.vcf.gz"
+AXIOM="${REF_INDEX_DIR}/Axiom_Exome_Plus.genotypes.all_populations.poly.hg38.vcf.gz"
 
 # parameters
 THREADS=6
