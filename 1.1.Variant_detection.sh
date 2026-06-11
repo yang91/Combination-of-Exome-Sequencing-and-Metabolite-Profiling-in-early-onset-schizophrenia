@@ -9,9 +9,9 @@
 GROUP="SCZ" # modify this to NOR if you are running normal sample analysis
 
 # input/output path
-SEQDATA_DIR="./ExomeSeq-Data"
-RESULT_DIR="./ExomeSeq-Result"
-REF_INDEX_DIR="./Ref_and_Index/"
+SEQDATA_DIR="${HOME}/EOSCZ/ExomeSeq-Data"
+RESULT_DIR="${HOME}/EOSCZ/ExomeSeq-Result"
+REF_INDEX_DIR="${HOME}/EOSCZ/Ref_and_Index/"
 
 # Reference/index path
 BWA_INDEX="${REF_INDEX_DIR}/BWA_INDEX"
@@ -28,7 +28,7 @@ AXIOM="${REF_INDEX_DIR}/GATK-hg38bundle/Axiom_Exome_Plus.genotypes.all_populatio
 # parameters
 THREADS=6
 
-SAMPLE_LIST="${PROJECT_DIR}/sample_list.txt" 
+SAMPLE_LIST="${HOME}/EOSCZ/${GROUP}.sample_list.txt" 
 # sample_list.txt contains all patient samples or all normal samples name used for exome-seq analysis
 # please not list both patient sample and normal sample in the sample_list.txt at the same time
 mapfile -t SAMPLES < "${SAMPLE_LIST}"
