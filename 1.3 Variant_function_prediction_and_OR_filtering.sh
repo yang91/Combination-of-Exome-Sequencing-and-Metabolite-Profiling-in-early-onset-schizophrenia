@@ -291,8 +291,7 @@ var_ptv_cvt <- var_ptv_cvt[, common_cols, drop = FALSE]
 
 var_selected <- rbind(var_sav_cvt, var_ptv_cvt) %>% unique()
 
-output_file <- file.path(RESULT_DIR, "maf_005", 
-    "Maf_0.05.potential_harmful.ORgt1_variants.txt")
+output_file <- file.path(RESULT_DIR, "Maf_0.05.potential_harmful.ORgt1_variants.txt")
 
 write.table(var_selected, file = output_file,
             row.names = FALSE, col.names = TRUE, 
