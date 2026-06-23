@@ -161,9 +161,7 @@ disease_variants$sample <- apply(disease_variants, 1, function(row) {
 sp_file <- file.path(CLIN_DIR, "sample_information.csv")
 sample_info <- read.csv(sp_file, header = TRUE, stringsAsFactors = FALSE)
 panss <- sample_info[,c('Sample', 'Name', 'Onset_age', 'PANSS.total','BPRS', 'PANSS.positive', 'PANSS.negative', 'Source')]
-
-# Keep only samples present in metabolite data
-panss <- panss[panss$Sample %in% colnames(dem_intensity), ]
+panss <- subset(panss,with_panss=='Y')
 
 
 # ============================================================================
