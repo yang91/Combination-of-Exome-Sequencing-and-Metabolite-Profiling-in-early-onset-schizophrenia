@@ -37,9 +37,9 @@ library(VennDiagram)
 #-------------------------------------------------------------------------------
 SEQDATA_DIR     <- file.path("~/EOSCZ/MetaSeq-Data", "convert_data") # The input files is the .mzML converted from .raw file format using ProteoWizard
 RESULT_DIR      <- "~/EOSCZ/MetaSeq-Result/"
-XCMS_OUT        <- file.path(RESULT_DIR, "XCMS")
-MASS_DIR        <- file.path(RESULT_DIR, "tidymass")
-STAT_DIR        <- file.path(RESULT_DIR, "statistics")
+XCMS_OUT        <- file.path(RESULT_DIR, "XCMS/")
+MASS_DIR        <- file.path(RESULT_DIR, "tidymass/")
+STAT_DIR        <- file.path(RESULT_DIR, "statistics/")
 
 #-------------------------------------------------------------------------------
 # 1. Ion-Mode-Specific Functions (positive or Negative)
@@ -443,7 +443,7 @@ sp_scz <- subset(spinfo, group == "case")
 cat("Correlation (duration vs dose):", cor(sp_scz$disease.duration, sp_scz$drug.dose, use = "complete.obs"), "\n")
 cat("Correlation (age vs dose):", cor(sp_scz$age, sp_scz$drug.dose, use = "complete.obs"), "\n")
 
-spinfo_stat <- subset(spinfo, class != "QC" & !(sample.name %in% c("SCZ_04", "SCZ_08", "SCZ_23")))
+spinfo_stat <- subset(spinfo, class != "QC")
 
 # Determine which modes to run
 modes_to_run <- if (RUN_MODE == "both") c("positive", "negative") else RUN_MODE
@@ -453,7 +453,6 @@ cent_params  <- CentWaveParam(snthresh = 6, ppm = 45, peakwidth = c(5, 25), mzdi
 merge_params <- MergeNeighboringPeaksParam(ppm = 45)
 
 # Run for each mode
-all_results <- list()
 
 for (mode in modes_to_run) {
 
@@ -473,36 +472,7 @@ for (mode in modes_to_run) {
   annt_file <- file.path(SEQDATA_DIR, paste0(mode, "-all-identification.csv"))
   stat_res <- run_statistics_for_mode(mode, qc_obj, annt_file, spinfo_stat)
 
-  all_results[[mode]] <- stat_res
-}
-
-# ---- Cross-mode annotation check (only if both modes run) ----
-if (RUN_MODE == "both" && length(all_results) == 2) {
-  cat("\n========== Cross-Mode Annotation Check ==========\n")
-
-  mg_res <- bind_rows(all_results[["pos"]], all_results[["neg"]])
-
-  ms1_only <- mg_res %>% filter((NumberMS1hmdb > 0 | NumberMS1kegg > 0) & MS2Metabolite == "-")
-  ms2_only <- mg_res %>% filter(MS2Metabolite != "-" & NumberMS1hmdb == 0 & NumberMS1kegg == 0)
-  ms1_ms2  <- mg_res %>% filter(MS2Metabolite != "-" & (NumberMS1hmdb > 0 | NumberMS1kegg > 0))
-
-  cat("MS1 only:", nrow(ms1_only), "\n")
-  cat("MS2 only:", nrow(ms2_only), "\n")
-  cat("MS1 + MS2:", nrow(ms1_ms2), "\n")
-
-  ms1_ms2_match <- ms1_ms2 %>%
-    filter(
-      grepl(MS2Metabolite, MS1hmdbName, fixed = TRUE) |
-      grepl(MS2Metabolite, MS1keggName, fixed = TRUE) |
-      (MS2hmd != "-" & !is.na(MS2hmd) & grepl(MS2hmd, MS1hmdbID, fixed = TRUE)) |
-      (MS2kegg != "-" & !is.na(MS2kegg) & grepl(MS2kegg, MS1keggID, fixed = TRUE))
-    )
-
-  cat("MS1-MS2 matched:", nrow(ms1_ms2_match), "\n")
-
-  high_conf <- bind_rows(ms1_ms2_match, ms2_only)
-  write.table(high_conf, file = file.path(STAT_DIR, "LM.high_confidence_annotations.txt"),
-              row.names = FALSE, sep = "\t", quote = FALSE)
+  write.table(stat_res,paste0(STAT_DIR, mode ,'.Two_group.Univariate-t.Multivariat_lm.with_annt.txt', sep = '\t', quote = F)
 }
 
 cat("\n========== Pipeline Complete ==========\n")
