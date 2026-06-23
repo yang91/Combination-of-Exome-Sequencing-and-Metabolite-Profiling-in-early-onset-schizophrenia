@@ -161,6 +161,47 @@ disease_variants$sample <- apply(disease_variants, 1, function(row) {
 # 4. Metabolite Data Loading and Processing
 # =============================================================================
 
+# --- 4.0 Function to select metabolites with accurate annotation ---
+select_annt <- function(metabolite){
+  ms1_ant <- rbind(metabolite %>% dplyr::filter(NumberMS1hmdb>0),
+                 metabolite %>% dplyr::filter(NumberMS1kegg>0)) %>% unique()
+              
+  ms2_ant <- metabolite %>% dplyr::filter(MS2Metabolite!='-')
+  ms2_ant_only <- ms2_ant %>% dplyr::filter(NumberMS1hmdb==0) %>% dplyr::filter(NumberMS1kegg==0) 
+
+  ms1_2_ant <- rbind(ms1_ant %>% dplyr::filter(MS2Metabolite!='-'),
+                   ms2_ant %>% dplyr::filter(NumberMS1hmdb>0),
+                   ms2_ant %>% dplyr::filter(NumberMS1kegg>0)) %>% unique()
+  ms1_2_ant_match <- vector()
+  n <- vector()
+  for(i in 1:dim(ms1_2_ant)[1]){
+    tmp <- ms1_2_ant[i,]
+    j <- 0
+    if(grepl("tmp$MS2Metabolite", tmp$MS1hmdbName, perl = T)){
+      j <- j+1
+    }
+    if(grepl("tmp$MS2Metabolite", tmp$MS1keggName, perl = T)){
+      j <- j+1
+    }
+    if(tmp$MS2hmd!='-' && tmp$MS2hmd!='' && !is.na(tmp$MS2hmd) && grepl(tmp$MS2hmd, tmp$MS1hmdbID)){
+      j <- j+1
+    }
+    if(tmp$MS2kegg!='-' && tmp$MS2kegg!='' && !is.na(tmp$MS2kegg) && grepl(tmp$MS2kegg, tmp$MS1hmdbTokegg)){
+      j <- j+1
+    }
+    if(tmp$MS2kegg!='-' &&  tmp$MS2kegg!='' && !is.na(tmp$MS2kegg) &&grepl(tmp$MS2kegg, tmp$MS1keggID)){
+      j <- j+1
+    }
+  
+    if(j>0){  n[i] <- 'TRUE'  }
+    else{ n[i] <- 'FALSE'  }
+  }
+  ms1_2_ant_match <- ms1_2_ant[as.logical(n),]
+  res <- rbind(ms2_ant_only, ms1_2_ant_match)
+  return(res)
+}
+
+
 # --- 4.1 Load positive and negative mode metabolite data ---
 META_STAT_DIR
 pos_file <- file.path(META_STAT_DIR, "positive.Two_group.Univariate-t.Multivariat_lm.with_annt.txt")
@@ -228,6 +269,8 @@ merge_duplicate_metabolites <- function(metabolite_df) {
 }
 
 dem_metabolites <- merge_duplicate_metabolites(dem_metabolites)
+dem_metabolites_annt <- select_annt(dem_metabolites)
+non_dem_metabolites_annt <- select_annt(non_dem_metabolites)
 
 # --- 4.4 Build analysis data frames ---
 prepare_intensity_data <- function(metabolite_df, sample_names) {
@@ -244,6 +287,7 @@ prepare_intensity_data <- function(metabolite_df, sample_names) {
 
 dem_intensity <- prepare_intensity_data(dem_metabolites, sample_names)
 non_dem_intensity <- prepare_intensity_data(non_dem_metabolites, sample_names)
+
 
 # =============================================================================
 # 5. Core Analysis Function: Compare Metabolite Differences
@@ -507,3 +551,9 @@ write.table(dem_metabolites, file = dem_file, quote = F, row.names = F)
 
 non_dem_file <- file.path(META_STAT_DIR,'Non-DEMs_with_annt.txt')
 write.table(non_dem_metabolites, file = non_dem_file, quote = F, row.names = F)
+
+dem_annt_file <- file.path(META_STAT_DIR,'DEMs_with_annt.filter.txt')
+write.table(dem_metabolites_annt, file = dem_annt_file, quote = F, row.names = F)
+
+non_dem_annt_file <- file.path(META_STAT_DIR,'Non-DEMs_with_annt.filter.txt')
+write.table(non_dem_metabolites_annt, file = non_dem_annt_file, quote = F, row.names = F)
