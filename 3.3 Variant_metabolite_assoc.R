@@ -11,8 +11,8 @@ library(dplyr)
 # =============================================================================
 
 EXOME_DIR <- "~/EOSCZ/ExomeSeq-Result/"
-VAR_DIR <- "~/EOSCZ/ExomeSeq-Result/variant"
-META_STAT_DIR  <- "~/EOSCZ/MetaSeq-Result/statistics"
+VAR_DIR <- "~/EOSCZ/ExomeSeq-Result/variant/"
+META_STAT_DIR  <- "~/EOSCZ/MetaSeq-Result/statistics/"
 CLIN_DIR <- "~/EOSCZ/Clinical_Info/"
 
 
@@ -30,7 +30,7 @@ var_file <- file.path(VAR_DIR, "disease_causing_ORgt1_variants_in_GSgt4_gene.txt
 disease_variants <- read.csv(var_file, sep = '\t', stringsAsFactors = FALSE, row.names = 1)
 
 # Load VEP annotation results (skip first 44 header lines)
-vep_file <- file.path(VAR_DIR, "disease_causing_ORgt1_variants_in_GSgt4_gene.txt")
+vep_file <- file.path(VAR_DIR, "Maf_0.05.potential_harmful.ORgt1_variants.txt")
 vep_results <- read.csv(vep_file, sep = '\t', stringsAsFactors = FALSE, skip = 44, row.names = 1)
 
 # --- 1.2 Load sample information ---
