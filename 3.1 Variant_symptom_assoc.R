@@ -8,7 +8,6 @@ library(cowplot)
 EXOME_DIR <- "~/EOSCZ/ExomeSeq-Result/"
 VAR_DIR <- "~/EOSCZ/ExomeSeq-Result/variant"
 CLIN_DIR <- "~/EOSCZ/Clinical_Info/"
-NET_DIR <- "~/EOSCZ/Network_file/"
 
 # ============================================================================
 # 1. Load and Process Mutation Data
@@ -247,5 +246,5 @@ colnames(mut_stat) <- c(
 sig_mut <- mut_stat %>%
   filter(if_any(c(P_total, P_positive, P_negative), ~ .x < 0.05))
 
-write.table(sig_mut, file = paste0(NET_DIR, '/High_risk_genes_associated_with_PANSS.txt',
+write.table(sig_mut, file = paste0(CLIN_DIR, '/High_risk_genes_associated_with_PANSS.txt',
   row.names = FALSE, col.names = TRUE, quote = TRUE, sep = '\t')
