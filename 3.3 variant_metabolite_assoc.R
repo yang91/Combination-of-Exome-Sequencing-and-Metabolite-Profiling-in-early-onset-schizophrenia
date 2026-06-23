@@ -1,285 +1,507 @@
+# =============================================================================
+# Variant-Metabolite Association Analysis
+# =============================================================================
+
 library(magrittr)
 library(Hmisc)
-setwd("~/EOSCZ/")
+library(dplyr)
 
-#### 0. Data processing ####
-# read the gene score file. The gene score evaluation model was our in-house script from one unpublished data.
-gs <- read.csv('./ExomeSeq-Result/gene_score.high-risk.txt', header = T, sep = '\t', stringsAsFactors = F)
-# read the OR>1 disease causing variants in GS>4 genes
-gs_var <- read.csv('/ExomeSeq-Result/disease_causing_ORgt1_variants_in_GSgt4_gene.txt', header = T, sep = '\t', stringsAsFactors = F)
-# read the raw vep result to extract variants corresponding samples
-vep <- read.csv('./ExomeSeq-Result/variant/Maf_0.05.potential_harmful.ORgt1_variants.txt', header = T, sep = '\t', skip = 44, stringsAsFactors = F)
+# =============================================================================
+# 0. Configuration and Path Setup
+# =============================================================================
 
-# read early-onset schizophrenia samples 
-sp_info <- read.csv('./clinical_info/sample_information.csv', header = T, stringsAsFactors = F)
-sp_info <- sp_info[sp_info$group!='QC',]
-sp_info <- sp_info[order(sp_info$group,decreasing = F),]
-rownames(sp_info) <- sp_info$sample.name
+EXOME_DIR <- "~/EOSCZ/ExomeSeq-Result/"
+VAR_DIR <- "~/EOSCZ/ExomeSeq-Result/variant"
+META_STAT_DIR  <- "~/EOSCZ/MetaSeq-Result/statistics"
+CLIN_DIR <- "~/EOSCZ/Clinical_Info/"
 
-# Process data based on variant-based level
-vep_gs_var <- subset(vep, (Gene %in% gs_var$Gene)&(X.Uploaded_variation %in% gs_var$X.Uploaded_variation))
-vep_list <- unique(vep_gs_var$X.Uploaded_variation)
-var_ipt <- data.frame() # The data frame to store the samples containing variants
-var_eft <- data.frame() # The data frame to store the prediction effect of variants. If one variant have several effects in different transcripts, record the most severe one.
-var_ipt[1,1:48] <- var_eft[1,1:48] <- 0
-colnames(var_ipt) <- colnames(var_eft) <- sp_info$sample.name
-for(i in 1:length(vep_list)){
-  var_ipt[i,1:48] <- '0'
-  var_eft[i,1:48] <- '0'
-  tmp <- subset(vep_gs_var,X.Uploaded_variation==vep_list[i])
-  vt <- apply(tmp,1,function(x){
-    y <- unlist(strsplit(x,';'))
-    z1 <- y[grepl('IND',y)]
-    z1 <- gsub('IND=','',z1)
-    z2 <- y[grepl('IMPACT',y)]
-    z2 <- gsub('IMPACT=','',z2)
-    vt <- data.frame(sample = z1, conseq = z2)
-    return(unlist(vt))
+
+# =============================================================================
+# 1. Data Loading and Preprocessing
+# =============================================================================
+
+# --- 1.1 Load gene score data ---
+# Gene score evaluation model from an in-house script of unpublished data
+gs_file <- file.path(EXOME_DIR, "gene_score.high-risk.txt")
+gene_scores <- read.csv(gs_file, sep = '\t', stringsAsFactors = FALSE, row.names = 1)
+
+# Load disease-causing variants with OR > 1 in genes with GS > 4
+var_file <- file.path(VAR_DIR, "disease_causing_ORgt1_variants_in_GSgt4_gene.txt")
+disease_variants <- read.csv(var_file, sep = '\t', stringsAsFactors = FALSE, row.names = 1)
+
+# Load VEP annotation results (skip first 44 header lines)
+vep_file <- file.path(VAR_DIR, "disease_causing_ORgt1_variants_in_GSgt4_gene.txt")
+vep_results <- read.csv(vep_file, sep = '\t', stringsAsFactors = FALSE, skip = 44, row.names = 1)
+
+# --- 1.2 Load sample information ---
+sp_file <- file.path(CLIN_DIR, "sample_information.csv")
+sample_info <- read.csv(sp_file, header = TRUE, stringsAsFactors = FALSE)
+
+# Exclude QC samples and sort by group
+sample_info <- sample_info %>%
+  dplyr::filter(group != 'QC') %>%
+  dplyr::arrange(group)
+
+rownames(sample_info) <- sample_info$sample.name
+sample_names <- sample_info$sample.name
+n_samples <- length(sample_names)
+
+# =============================================================================
+# 2. Variant Data Processing (Variant-Level)
+# =============================================================================
+
+# Filter VEP results to retain only target genes and variants
+filtered_vep <- vep_results %>%
+  dplyr::filter(
+    Gene %in% disease_variants$Gene,
+    X.Uploaded_variation %in% disease_variants$X.Uploaded_variation
+  )
+
+variant_list <- unique(filtered_vep$X.Uploaded_variation)
+n_variants <- length(variant_list)
+
+# Initialize matrices:
+# var_presence: 1 = sample carries the variant, 0 = does not carry
+# var_effect: variant impact level (4 = HIGH, 3 = MODERATE, 2 = LOW, 1 = MODIFIER)
+var_presence <- matrix(0, nrow = n_variants, ncol = n_samples)
+var_effect   <- matrix(0, nrow = n_variants, ncol = n_samples)
+colnames(var_presence) <- colnames(var_effect) <- sample_names
+rownames(var_presence) <- rownames(var_effect) <- variant_list
+
+# Impact level mapping
+EFFECT_LEVELS <- c('HIGH' = 4, 'MODERATE' = 3, 'LOW' = 2, 'MODIFIER' = 1)
+
+# Process each variant
+for (i in seq_len(n_variants)) {
+  variant_id <- variant_list[i]
+  variant_records <- dplyr::filter(filtered_vep, X.Uploaded_variation == variant_id)
+  
+  # Extract sample IDs and impact levels
+  variant_info <- apply(variant_records, 1, function(row) {
+    fields <- unlist(strsplit(row, ';'))
+    
+    # Extract sample ID
+    sample_field <- fields[grepl('IND=', fields)]
+    sample_id <- gsub('IND=', '', sample_field)
+    
+    # Extract impact level
+    impact_field <- fields[grepl('IMPACT=', fields)]
+    impact_level <- gsub('IMPACT=', '', impact_field)
+    
+    data.frame(sample = sample_id, impact = impact_level, stringsAsFactors = FALSE)
   })
-  sp <- unique(vt[1,])
-  vt[2,] <- gsub('HIGH',4,vt[2,])
-  vt[2,] <- gsub('MODERATE',3,vt[2,])
-  vt[2,] <- gsub('LOW',2,vt[2,])
-  vt[2,] <- gsub('MODIFIER',1,vt[2,])
-  if(length(sp)==1){
-    if(sp %in% sp_info$sample.name){
-      var_ipt[i,sp] <- 1
-      var_eft[i,sp] <- max(vt[2,])
-    }
+  
+  # Combine all records
+  variant_df <- do.call(rbind, variant_info)
+  variant_df$impact_num <- EFFECT_LEVELS[variant_df$impact]
+  
+  # Get samples carrying this variant (deduplicated)
+  carrier_samples <- unique(variant_df$sample)
+  carrier_samples <- carrier_samples[carrier_samples %in% sample_names]
+  
+  # Fill matrices: record maximum impact level per sample
+  for (sample_id in carrier_samples) {
+    sample_effects <- variant_df$impact_num[variant_df$sample == sample_id]
+    var_presence[i, sample_id] <- 1
+    var_effect[i, sample_id] <- max(sample_effects, na.rm = TRUE)
   }
-  else{
-    for(j in 1:length(sp)){
-      if(sp[j] %in% sp_info$sample.name){
-        var_ipt[i,sp[j]] <- 1
-        var_eft[i,sp[j]] <- max(vt[2,grepl(sp[j],vt[1,])])
-      }
+}
+
+# =============================================================================
+# 3. Variant Data Aggregation (Gene-Level)
+# =============================================================================
+
+gene_list <- unique(disease_variants$Gene)
+n_genes <- length(gene_list)
+
+# Initialize gene-level matrices
+gene_presence <- matrix(0, nrow = n_genes, ncol = n_samples)  # whether sample carries any variant in gene
+gene_effect   <- matrix(0, nrow = n_genes, ncol = n_samples)  # maximum impact level in gene
+colnames(gene_presence) <- colnames(gene_effect) <- sample_names
+rownames(gene_presence) <- rownames(gene_effect) <- gene_list
+
+for (i in seq_len(n_genes)) {
+  gene_name <- gene_list[i]
+  gene_variants <- disease_variants %>%
+    dplyr::filter(Gene == gene_name) %>%
+    dplyr::pull(X.Uploaded_variation)
+  
+  # Calculate variant count and maximum impact per sample
+  for (j in seq_len(n_samples)) {
+    sample_id <- sample_names[j]
+    sample_variants <- gene_variants[gene_variants %in% variant_list]
+    
+    if (length(sample_variants) > 0) {
+      presence_values <- as.numeric(var_presence[sample_variants, sample_id])
+      effect_values <- as.numeric(var_effect[sample_variants, sample_id])
+      
+      gene_presence[i, j] <- min(sum(presence_values), 1)  # cap at 1 (presence/absence)
+      gene_effect[i, j] <- max(effect_values)
     }
   }
 }
-rownames(var_eft) <- rownames(var_ipt) <- vep_list
 
-# Collapse the variant information to gene-based level
-gene_ipt <- data.frame() # The data frame to store the samples containing either variants in corresponding gene
-gene_eft <- data.frame() # The data frame to store the prediction effect of variants inn one gene (record the most severe one).
-gene_list <- unique(gs_var$Gene)
-for(i in 1:length(gene_list)){
-  tmp <- subset(gs_var,Gene==gene_list[i])$X.Uploaded_variation
-  gene_ipt[i,1:48] <- apply(var_ipt[tmp,],2,function(x){
-    y <- sum(as.numeric(x));return(y)
+# Add sample information column for each variant
+disease_variants$sample <- apply(disease_variants, 1, function(row) {
+  variant_id <- row[1]
+  vep_records <- vep_results[vep_results$X.Uploaded_variation == variant_id, ]
+  
+  # Extract sample IDs
+  sample_ids <- apply(vep_records, 1, function(vep_row) {
+    fields <- unlist(strsplit(vep_row[14], split = ';'))
+    gsub('IND=', '', fields[1])
   })
-  gene_eft[i,1:48] <- apply(var_eft[tmp,],2,function(x){
-    y <- sum(as.numeric(x));return(y)
-  })
-}
-colnames(gene_eft) <- colnames(gene_ipt) <- colnames(var_eft)
-rownames(gene_eft) <- rownames(gene_ipt) <- gene_list
-for(i in 1:dim(gene_ipt)[2]){
-  if(length(which(gene_ipt[,i]>1))>1){
-    k <- which(gene_ipt[,i]>1)
-    sp <- colnames(gene_ipt)[i]
-    for(j in 1:length(k)){
-      gn <- rownames(gene_ipt[k[j],i])
-      tmp <- subset(gs_var,Gene==gn)$X.Uploaded_variation
-      gene_ipt[k[j],i] <- 1
-      gene_eft[k[j],i] <- max(as.numeric(var_eft[tmp,sp]))
-    }
-  }
-  else{
-    next;
-  }
-}
-gs_var$sample <- apply(gs_var, 1, function(x){
-  tmp <- vep[vep$X.Uploaded_variation==x[1],]
-  sp <- apply(tmp,1,function(y){
-    z <- strsplit(y[14], split = ';')
-    z <- unlist(z)
-    return(z[1])
-  })
-  sp <- gsub('IND=','',sp)
-  sp <- sp[sp %in% sp_info$sample.name]
-  sp <- paste0(unique(sp),collapse = ',')
-  return(sp)
+  
+  # Filter valid samples and deduplicate
+  valid_samples <- sample_ids[sample_ids %in% sample_names]
+  paste(unique(valid_samples), collapse = ',')
 })
 
-# Remove the redundant metbolite intensities. For the metabolite with several peaks, calculate the average intensity for further analysis.
-# In this step, all metabolites were consider to compute the association between gene variants and metabolite intensities, no matter if this metabolite has accurate annotation.
-pos <- read.csv('./MetaSeq-Result/statistics/positive.Two_group.Univariate-t.Multivariat_lm.with_annt.txt', header = T, sep = '\t', stringsAsFactors = F)
-neg <- read.csv('./MetaSeq-Result/statistics/negative.Two_group.Univariate-t.Multivariat_lm.with_annt.txt', header = T, sep = '\t', stringsAsFactors = F)
-all_met <- rbind(pos,neg)
-all_met <- all_met[,c(1,4,13,34,39:106)]
-dem <- subset(all_met,All_sample.LM.padj<0.05)
-non_dem <- subset(all_met, !(XCMS.id %in% dem$XCMS.id))
+# =============================================================================
+# 4. Metabolite Data Loading and Processing
+# =============================================================================
 
-dup <- dem$MS2Metabolite[duplicated(dem$MS2Metabolite)] %>% unique()
-dup <- dup[-c(1)]
-a <- subset(dem,MS2Metabolite %in% dup)
-b <- subset(dem,!(MS2Metabolite %in% dup))
-c <- data.frame()
-for(i in 1:length(dup)){
-  tmp <- subset(a,MS2Metabolite==dup[i])
-  for(j in c(1:4)){
-    c[i,j] <- paste0(tmp[,j], collapse = ';')
+# --- 4.1 Load positive and negative mode metabolite data ---
+META_STAT_DIR
+pos_file <- file.path(META_STAT_DIR, "positive.Two_group.Univariate-t.Multivariat_lm.with_annt.txt")
+neg_file <- file.path(META_STAT_DIR, "negative.Two_group.Univariate-t.Multivariat_lm.with_annt.txt")
+pos_metabolites <- read.csv(pos_file, sep = '\t', stringsAsFactors = FALSE, row.names = 1)
+neg_metabolites <- read.csv(neg_file, sep = '\t', stringsAsFactors = FALSE, row.names = 1)
+
+# Combine and select key columns
+all_metabolites <- rbind(pos_metabolites, neg_metabolites)
+selected_columns <- c(1, 4, 13, 34, 39:106)  # XCMS.id, model, annotation, p-value, sample intensities
+all_metabolites <- all_metabolites[, selected_columns]
+
+# --- 4.2 Separate differentially expressed metabolites (DEM) and non-DEM ---
+dem_metabolites <- all_metabolites %>%
+  dplyr::filter(All_sample.LM.padj < 0.05)
+
+non_dem_metabolites <- all_metabolites %>%
+  dplyr::filter(!XCMS.id %in% dem_metabolites$XCMS.id)
+
+# --- 4.3 Merge metabolites with duplicate annotations (average intensities) ---
+merge_duplicate_metabolites <- function(metabolite_df) {
+  # Find metabolites with duplicate annotations
+  duplicate_names <- metabolite_df$MS2Metabolite[duplicated(metabolite_df$MS2Metabolite)] %>%
+    unique() %>%
+    .[-1]  # remove NA or first element
+  
+  if (length(duplicate_names) == 0) {
+    return(metabolite_df)
   }
-
-  c[i,5:23] <- tmp[1,5:23]
-  c[i,24] <- paste0(tmp[,24], collapse = ';')
-  c[i,25:72] <- apply(tmp[,25:72],2,function(x){x <- as.numeric(x);return(mean(x))})
-}
-colnames(c) <- colnames(a)
-dem <- rbind(b,c)
-
-dem_int <- dem[,sp_info$sample.name]
-dem_int$XCMS.id <- paste0(dem$XCMS.id,'_',dem$model)
-dem_int$model <- dem$model
-dem_int <- dem_int[,c(49,1:48,50)] # XCMS.id, sample name, model
-
-non_dem_int <- non_dem[,sp_info$sample.name]
-non_dem_int$XCMS.id <- paste0(non_dem$XCMS.id,'_',non_dem$model)
-non_dem_int$model <- non_dem$model
-non_dem_int <- non_dem_int[,c(49,1:48,50)]
-
-#### 1. Compare the intensity difference between mutation carriers and non-mutation carriers ####
-# Both intensity and rank based on intensity were considered in the comparison #
-estimate_met_diff <- function(mut,met){
-  res <- data.frame()
-  sp <- unlist(strsplit(unique(mut$sample), split = ','))
-  nor_sp <- colnames(met)[grep('NOR',colnames(met))]
-  scz_sp <- colnames(met)[grep('SCZ',colnames(met))]
-  if(grepl('NOR',mut$sample)){
-    nor_var_sp <- sp[grep('NOR',sp)]
-    nor_novar_sp <- nor_sp[!(nor_sp %in% nor_var_sp)]
-  }else{
-    nor_novar_sp <- nor_sp
+  
+  # Separate duplicate and unique metabolites
+  dup_metabolites <- dplyr::filter(metabolite_df, MS2Metabolite %in% duplicate_names)
+  unique_metabolites <- dplyr::filter(metabolite_df, !MS2Metabolite %in% duplicate_names)
+  
+  # Merge duplicate metabolites
+  merged_metabolites <- data.frame()
+  for (i in seq_along(duplicate_names)) {
+    met_name <- duplicate_names[i]
+    met_group <- dplyr::filter(dup_metabolites, MS2Metabolite == met_name)
+    
+    # Columns 1-4: concatenate or take first value
+    new_row <- data.frame(matrix(NA, nrow = 1, ncol = ncol(metabolite_df)))
+    colnames(new_row) <- colnames(metabolite_df)
+    
+    for (j in 1:4) {
+      new_row[1, j] <- paste(met_group[, j], collapse = ';')
+    }
+    
+    # Columns 5-23: take first value
+    new_row[1, 5:23] <- met_group[1, 5:23]
+    
+    # Column 24: concatenate
+    new_row[1, 24] <- paste(met_group[, 24], collapse = ';')
+    
+    # Columns 25-72 (sample intensities): calculate mean
+    intensity_cols <- 25:72
+    new_row[1, intensity_cols] <- apply(met_group[, intensity_cols], 2, function(x) {
+      mean(as.numeric(x), na.rm = TRUE)
+    })
+    
+    merged_metabolites <- rbind(merged_metabolites, new_row)
   }
-  scz_var_sp <- sp[grep('SCZ',sp)]
-  scz_novar_sp <- scz_sp[!(scz_sp %in% scz_var_sp)]
-  for(j in 1:dim(met)[1]){
-    sta1 <- t.test(met[j,scz_var_sp], met[j,nor_novar_sp])
-    sta2 <- t.test(met[j,scz_var_sp], met[j,scz_novar_sp])
-    res[j,1:9] <- c(met[j,'XCMS.id'],sta1$p.value,sta2$p.value, 
-                    sta1$estimate,sta2$estimate,sta1$stderr,sta2$stderr)
+  
+  rbind(unique_metabolites, merged_metabolites)
+}
+
+dem_metabolites <- merge_duplicate_metabolites(dem_metabolites)
+
+# --- 4.4 Build analysis data frames ---
+prepare_intensity_data <- function(metabolite_df, sample_names) {
+  intensity_data <- metabolite_df[, sample_names]
+  intensity_data$XCMS.id <- paste0(metabolite_df$XCMS.id, '_', metabolite_df$model)
+  intensity_data$model <- metabolite_df$model
+  
+  # Reorder columns: XCMS.id, samples, model
+  n_sample_cols <- length(sample_names)
+  intensity_data <- intensity_data[, c(n_sample_cols + 1, 1:n_sample_cols, n_sample_cols + 2)]
+  
+  return(intensity_data)
+}
+
+dem_intensity <- prepare_intensity_data(dem_metabolites, sample_names)
+non_dem_intensity <- prepare_intensity_data(non_dem_metabolites, sample_names)
+
+# =============================================================================
+# 5. Core Analysis Function: Compare Metabolite Differences
+#    Between Variant Carriers and Non-Carriers
+# =============================================================================
+
+#' Compare metabolite differences between variant carriers and non-carriers
+#' 
+#' @param variant_info Data frame containing variant sample information
+#' @param metabolite_data Metabolite data (intensity or rank values)
+#' @return Data frame with statistical test results
+compare_metabolite_difference <- function(variant_info, metabolite_data) {
+  
+  # Extract sample groups
+  carrier_samples <- unlist(strsplit(unique(variant_info$sample), split = ','))
+  scz_samples <- sample_names[grep('SCZ', sample_names)]
+  nor_samples <- sample_names[grep('NOR', sample_names)]
+  
+  # Define sample groups
+  scz_carriers <- carrier_samples[grep('SCZ', carrier_samples)]
+  scz_non_carriers <- scz_samples[!(scz_samples %in% scz_carriers)]
+  
+  if (any(grepl('NOR', variant_info$sample))) {
+    nor_carriers <- carrier_samples[grep('NOR', carrier_samples)]
+    nor_non_carriers <- nor_samples[!(nor_samples %in% nor_carriers)]
+  } else {
+    nor_non_carriers <- nor_samples
   }
-  colnames(res) <- c('XCMS.id','scz_varvsnor_novar.p.value','scz_varvsscz_novar.p.value',
-                     'mean of scz_var_sp met rank','mean of nor_novar_sp met rank','mean of scz_var_sp met rank','mean of scz_novar_sp met rank',
-                     'scz_varvsnor_novar.stderr','scz_varvsscz_novar.stderr')
-  return(res)
+  
+  # Perform statistical tests
+  results <- data.frame(
+    XCMS.id = character(nrow(metabolite_data)),
+    scz_var_vs_nor_no_var.pvalue = numeric(nrow(metabolite_data)),
+    scz_var_vs_scz_no_var.pvalue = numeric(nrow(metabolite_data)),
+    stringsAsFactors = FALSE
+  )
+  
+  for (j in seq_len(nrow(metabolite_data))) {
+    # Comparison 1: SCZ variant carriers vs healthy controls (non-carriers)
+    test1 <- t.test(
+      as.numeric(metabolite_data[j, scz_carriers]),
+      as.numeric(metabolite_data[j, nor_non_carriers])
+    )
+    
+    # Comparison 2: SCZ variant carriers vs SCZ non-carriers
+    test2 <- t.test(
+      as.numeric(metabolite_data[j, scz_carriers]),
+      as.numeric(metabolite_data[j, scz_non_carriers])
+    )
+    
+    results[j, ] <- c(
+      metabolite_data[j, 'XCMS.id'],
+      test1$p.value,
+      test2$p.value
+    )
+  }
+  
+  # Convert numeric columns
+  results$scz_var_vs_nor_no_var.pvalue <- as.numeric(results$scz_var_vs_nor_no_var.pvalue)
+  results$scz_var_vs_scz_no_var.pvalue <- as.numeric(results$scz_var_vs_scz_no_var.pvalue)
+  
+  return(results)
 }
 
-# Only consider the genes harboring variants in >= 2 SCZ samples.
-# Two comparison were applied: Mutation carriers (SCZ) vs non-mutation carriers (SCZ); Mutation carriers (SCZ) vs healthy controls
-##### 1.1 DEMs analysis #####
-x <- vector()
-for(i in 1:length(gs_var$Gene[duplicated(gs_var$Gene)])){
-  gene <- gs_var$Gene[duplicated(gs_var$Gene)][i]
-  sample <- gs_var[gs_var$Gene==gene,'sample']
+# =============================================================================
+# 6. Filter Target Genes (Genes with variants in >= 2 SCZ samples)
+# =============================================================================
+
+# Identify genes carrying variants in multiple SCZ samples
+get_multisample_genes <- function(disease_variants) {
   
-  if((!grepl('NOR',paste0(sample,collapse = ';')))&(!duplicated(sample))){
-    x <- c(x,gene) %>% unique()
+  # Case 1: Same gene appears in multiple distinct SCZ samples (non-duplicated samples)
+  duplicated_genes <- disease_variants$Gene[duplicated(disease_variants$Gene)]
+  multi_sample_genes <- c()
+  
+  for (gene in unique(duplicated_genes)) {
+    gene_samples <- disease_variants[disease_variants$Gene == gene, 'sample']
+    
+    # Check if only in SCZ samples and samples are non-duplicated
+    has_no_nor <- !any(grepl('NOR', gene_samples))
+    has_unique_samples <- !any(duplicated(gene_samples))
+    
+    if (has_no_nor && has_unique_samples) {
+      multi_sample_genes <- c(multi_sample_genes, gene)
+    }
+  }
+  
+  # Case 2: Single sample carries multiple variants in same gene (comma-separated sample names)
+  multi_variant_genes <- c()
+  multi_variant_records <- disease_variants[grepl(',', disease_variants$sample), ]
+  
+  for (i in seq_len(nrow(multi_variant_records))) {
+    if (!grepl('NOR', multi_variant_records$sample[i])) {
+      multi_variant_genes <- c(multi_variant_genes, multi_variant_records$Gene[i])
+    }
+  }
+  
+  unique(c(multi_sample_genes, multi_variant_genes))
+}
+
+target_genes <- get_multisample_genes(disease_variants)
+
+# =============================================================================
+# 7. Association Analysis: Gene Variants and Metabolites
+# =============================================================================
+
+# --- 7.1 Calculate ranks (for non-parametric comparison) ---
+calculate_ranks <- function(intensity_data) {
+  rank_data <- as.data.frame(t(apply(intensity_data[, sample_names], 1, rank)))
+  rank_data$XCMS.id <- intensity_data$XCMS.id
+  rank_data <- rank_data[, c(ncol(rank_data), 1:(ncol(rank_data) - 1))]
+  return(rank_data)
+}
+
+dem_ranks <- calculate_ranks(dem_intensity)
+non_dem_ranks <- calculate_ranks(non_dem_intensity)
+
+# --- 7.2 Run association analysis ---
+run_association_analysis <- function(genes, variant_data, intensity_data, rank_data) {
+  
+  results_list <- list()
+  
+  for (i in seq_along(genes)) {
+    gene_name <- genes[i]
+    
+    # Get all variant samples for this gene
+    gene_variants <- variant_data %>%
+      dplyr::filter(Gene == gene_name)
+    
+    # Combine all samples (comma-separated)
+    combined_samples <- paste(gene_variants$sample, collapse = ',')
+    gene_variants$sample[1] <- combined_samples
+    
+    # Use first row as representative for testing
+    variant_record <- gene_variants[1, ]
+    
+    # Rank-based tests
+    rank_results <- compare_metabolite_difference(variant_record, rank_data)
+    rank_results <- rank_results[, 1:3]
+    colnames(rank_results)[2:3] <- c('rank.scz_var_vs_nor_no_var.pvalue', 
+                                      'rank.scz_var_vs_scz_no_var.pvalue')
+    rank_results$rank.scz_var_vs_nor_no_var.padj <- p.adjust(
+      rank_results$rank.scz_var_vs_nor_no_var.pvalue, method = 'BH'
+    )
+    rank_results$rank.scz_var_vs_scz_no_var.padj <- p.adjust(
+      rank_results$rank.scz_var_vs_scz_no_var.pvalue, method = 'BH'
+    )
+    
+    # Intensity-based tests
+    intensity_results <- compare_metabolite_difference(variant_record, intensity_data[, 1:49])
+    intensity_results <- intensity_results[, 1:3]
+    colnames(intensity_results)[2:3] <- c('intensity.scz_var_vs_nor_no_var.pvalue',
+                                            'intensity.scz_var_vs_scz_no_var.pvalue')
+    intensity_results$intensity.scz_var_vs_nor_no_var.padj <- p.adjust(
+      intensity_results$intensity.scz_var_vs_nor_no_var.pvalue, method = 'BH'
+    )
+    intensity_results$intensity.scz_var_vs_scz_no_var.padj <- p.adjust(
+      intensity_results$intensity.scz_var_vs_scz_no_var.pvalue, method = 'BH'
+    )
+    
+    # Merge results
+    combined_results <- merge(
+      intensity_results, rank_results,
+      by = 'XCMS.id'
+    )
+    
+    results_list[[i]] <- combined_results
+    names(results_list)[i] <- gene_name
+  }
+  
+  return(results_list)
+}
+
+# Run analysis separately for DEM and non-DEM
+dem_association <- run_association_analysis(
+  target_genes, disease_variants, dem_intensity, dem_ranks
+)
+
+non_dem_association <- run_association_analysis(
+  target_genes, disease_variants, non_dem_intensity, non_dem_ranks
+)
+
+# =============================================================================
+# 8. Result Summary and Statistics
+# =============================================================================
+
+summarize_significant_results <- function(dem_results, non_dem_results) {
+  
+  for (i in seq_along(dem_results)) {
+    gene_name <- names(dem_results)[i]
+    dem_res <- dem_results[[i]]
+    non_dem_res <- non_dem_results[[i]]
+    
+    # Count significant results per condition (padj < 0.05)
+    stats <- list(
+      intensity_scz_vs_scz = list(
+        dem = sum(dem_res$intensity.scz_var_vs_scz_no_var.padj < 0.05, na.rm = TRUE),
+        non_dem = sum(non_dem_res$intensity.scz_var_vs_scz_no_var.padj < 0.05, na.rm = TRUE)
+      ),
+      intensity_scz_vs_nor = list(
+        dem = sum(dem_res$intensity.scz_var_vs_nor_no_var.padj < 0.05, na.rm = TRUE),
+        non_dem = sum(non_dem_res$intensity.scz_var_vs_nor_no_var.padj < 0.05, na.rm = TRUE)
+      ),
+      rank_scz_vs_scz = list(
+        dem = sum(dem_res$rank.scz_var_vs_scz_no_var.padj < 0.05, na.rm = TRUE),
+        non_dem = sum(non_dem_res$rank.scz_var_vs_scz_no_var.padj < 0.05, na.rm = TRUE)
+      ),
+      rank_scz_vs_nor = list(
+        dem = sum(dem_res$rank.scz_var_vs_nor_no_var.padj < 0.05, na.rm = TRUE),
+        non_dem = sum(non_dem_res$rank.scz_var_vs_nor_no_var.padj < 0.05, na.rm = TRUE)
+      )
+    )
+    
+    # Count metabolites significant in all four conditions
+    dem_shared <- dem_res %>%
+      dplyr::filter(
+        intensity.scz_var_vs_scz_no_var.padj < 0.05,
+        intensity.scz_var_vs_nor_no_var.padj < 0.05,
+        rank.scz_var_vs_scz_no_var.padj < 0.05,
+        rank.scz_var_vs_nor_no_var.padj < 0.05
+      )
+    
+    non_dem_shared <- non_dem_res %>%
+      dplyr::filter(
+        intensity.scz_var_vs_scz_no_var.padj < 0.05,
+        intensity.scz_var_vs_nor_no_var.padj < 0.05,
+        rank.scz_var_vs_scz_no_var.padj < 0.05,
+        rank.scz_var_vs_nor_no_var.padj < 0.05
+      )
+    
+    # Output summary
+    message(sprintf(
+      paste0(
+        "%s | ",
+        "Intensity(SCZ-mut vs SCZ-non): DEM=%d, NonDEM=%d | ",
+        "Intensity(SCZ-mut vs NOR): DEM=%d, NonDEM=%d | ",
+        "Rank(SCZ-mut vs SCZ-non): DEM=%d, NonDEM=%d | ",
+        "Rank(SCZ-mut vs NOR): DEM=%d, NonDEM=%d | ",
+        "Shared: DEM=%d, NonDEM=%d"
+      ),
+      gene_name,
+      stats$intensity_scz_vs_scz$dem, stats$intensity_scz_vs_scz$non_dem,
+      stats$intensity_scz_vs_nor$dem, stats$intensity_scz_vs_nor$non_dem,
+      stats$rank_scz_vs_scz$dem, stats$rank_scz_vs_scz$non_dem,
+      stats$rank_scz_vs_nor$dem, stats$rank_scz_vs_nor$non_dem,
+      nrow(dem_shared), nrow(non_dem_shared)
+    ))
   }
 }
-length(x)==length(unique(gs_var$Gene[duplicated(gs_var$Gene)]))）
-y <- vector()
-for(i in 1:length(gs_var[grepl(',',gs_var$sample),'Gene'])){
-  tmp <- gs_var[grepl(',',gs_var$sample),][i,]
-  if(!(grepl('NOR',tmp$sample))){
-    y <- c(tmp$Gene,y) %>% unique
-  }
-}
-multivar_onegene_id <- c(x,y) %>% unique()
 
-# Rank every DEM based on intensity
-dem_rank <- as.data.frame(t(apply(dem_int[,2:49],1,rank)))
-dem_rank$XCMS.id <- dem_int$XCMS.id
-dem_rank <- dem_rank[,c(49,1:48)]
-met_var_relation <- list()
-for(m in 1:length(multivar_onegene_id)){
-  tmp <- subset(gs_var,Gene==multivar_onegene_id[m])
-  tmp$sample[1] <- paste0(tmp$sample,collapse = ',')
-  # Rank comparision
-  lp_rank <- estimate_met_diff(tmp[1,],dem_rank)
-  lp_rank <- lp_rank[,1:3]
-  colnames(lp_rank)[2:3] <- c('rank.scz_varvsnor_novar.p.value','rank.scz_varvsscz_novar.p.value')
-  lp_rank$'rank.scz_varvsnor_novar.padj' <- p.adjust(lp_rank$'rank.scz_varvsnor_novar.p.value', method = 'BH')
-  lp_rank$'rank.scz_varvsscz_novar.padj' <- p.adjust(lp_rank$'rank.scz_varvsscz_novar.p.value', method = 'BH')
-  # Normalized intensity comparison
-  lp_real <- estimate_met_diff(tmp[1,],dem_int[,1:49])
-  lp_real <- lp_real[,1:3]
-  colnames(lp_real)[2:3] <- c('intensity.scz_varvsnor_novar.p.value',
-                              'intensity.scz_varvsscz_novar.p.value')
-  lp_real$'intensity.scz_varvsnor_novar.padj' <- p.adjust(lp_real$'intensity.scz_varvsnor_novar.p.value', method = 'BH')
-  lp_real$'intensity.scz_varvsscz_novar.padj' <- p.adjust(lp_real$'intensity.scz_varvsscz_novar.p.value', method = 'BH')
-  
-  lp <- merge(lp_real,lp_rank, by.x = 'XCMS.id', by.y = 'XCMS.id')
-  
-  met_var_relation[[m]] <- lp
-  names(met_var_relation)[m] <- multivar_onegene_id[m]
+summarize_significant_results(dem_association, non_dem_association)
 
-}
+# =============================================================================
+# 9. Save Results
+# =============================================================================
 
-#####  1.2 Non-dem analysis #####
-non_dem_rank <- as.data.frame(t(apply(non_dem_int[,2:49],1,rank)))
-non_dem_rank$XCMS.id <- non_dem_int$XCMS.id
-non_dem_rank <- non_dem_rank[,c(49,1:48)]
-nondem_met_var_relation <- list()
-for(n in 1:length(multivar_onegene_id)){
-  tmp <- subset(gs_var,Gene==multivar_onegene_id[n])
-  tmp$sample[1] <- paste0(tmp$sample,collapse = ',')
-  lp_rank <- estimate_met_diff(tmp[1,],non_dem_rank)
-  lp_rank <- lp_rank[,1:3]
-  colnames(lp_rank)[2:3] <- c('rank.scz_varvsnor_novar.p.value','rank.scz_varvsscz_novar.p.value')
-  lp_rank$'rank.scz_varvsnor_novar.padj' <- p.adjust(lp_rank$'rank.scz_varvsnor_novar.p.value', method = 'BH')
-  lp_rank$'rank.scz_varvsscz_novar.padj' <- p.adjust(lp_rank$'rank.scz_varvsscz_novar.p.value', method = 'BH')
-  lp_real <- estimate_met_diff(tmp[1,],non_dem_int[,1:49])
-  lp_real <- lp_real[,1:3]
-  colnames(lp_real)[2:3] <- c('intensity.scz_varvsnor_novar.p.value',
-                              'intensity.scz_varvsscz_novar.p.value')
-  lp_real$'intensity.scz_varvsnor_novar.padj' <- p.adjust(lp_real$'intensity.scz_varvsnor_novar.p.value', method = 'BH')
-  lp_real$'intensity.scz_varvsscz_novar.padj' <- p.adjust(lp_real$'intensity.scz_varvsscz_novar.p.value', method = 'BH')
-  
-  lp <- merge(lp_real,lp_rank, by.x = 'XCMS.id', by.y = 'XCMS.id')
-  
-  nondem_met_var_relation[[n]] <- lp
-  names(nondem_met_var_relation)[n] <- multivar_onegene_id[n]
-}
-
-##### 1.3 Count the number of variant-associated DEMs and non-DEMs #####
-for(i in 1:length(met_var_relation)){
-  dem_a <- subset(met_var_relation[[i]],(intensity.scz_varvsscz_novar.padj<0.05)) %>% dim()
-  nondem_a <- subset(nondem_met_var_relation[[i]],(intensity.scz_varvsscz_novar.padj<0.05)) %>% dim()
-  
-  dem_b <- subset(met_var_relation[[i]],(intensity.scz_varvsnor_novar.padj<0.05)) %>% dim()
-  nondem_b <- subset(nondem_met_var_relation[[i]],(intensity.scz_varvsnor_novar.padj<0.05)) %>% dim()
-  
-  dem_c <- subset(met_var_relation[[i]],(rank.scz_varvsscz_novar.padj<0.05)) %>% dim()
-  nondem_c <- subset(nondem_met_var_relation[[i]],(rank.scz_varvsscz_novar.padj<0.05)) %>% dim()
-  
-  dem_d <- subset(met_var_relation[[i]],(rank.scz_varvsnor_novar.padj<0.05)) %>% dim()
-  nondem_d <- subset(nondem_met_var_relation[[i]],(rank.scz_varvsnor_novar.padj<0.05)) %>% dim()
-  
-  dem_fin <- met_var_relation[[i]] %>% 
-    dplyr::filter(intensity.scz_varvsscz_novar.padj<0.05) %>%
-    dplyr::filter(intensity.scz_varvsnor_novar.padj<0.05) %>% 
-    dplyr::filter(rank.scz_varvsscz_novar.padj<0.05) %>% 
-    dplyr::filter(rank.scz_varvsnor_novar.padj<0.05)
-  nondem_fin <- nondem_met_var_relation[[i]] %>% 
-    dplyr::filter(intensity.scz_varvsscz_novar.padj<0.05) %>%
-    dplyr::filter(intensity.scz_varvsnor_novar.padj<0.05) %>% 
-    dplyr::filter(rank.scz_varvsscz_novar.padj<0.05) %>% 
-    dplyr::filter(rank.scz_varvsnor_novar.padj<0.05)
-  
-  print(paste0(multivar_onegene_id[[i]],
-               "  intensity.mut-SCZ vs nonmut-SCZ  ",
-               'Sig DEMs: ',dem_a[1],' ; Sig NonDEMs: ',nondem_a[1],
-               "  intensity.mut-SCZ vs NOR  ",
-               'Sig DEMs: ',dem_b[1],' ; Sig NonDEMs: ',nondem_b[1],
-               "  rank.mut-SCZ vs nonmut-SCZ  ",
-               'Sig DEMs: ',dem_c[1],' ; Sig NonDEMs: ',nondem_c[1],
-               "  rank.mut-SCZ vs NOR  ",
-               'Sig DEMs: ',dem_d[1],' ; Sig NonDEMs: ',nondem_d[1],
-              "  shared  ",
-              'Sig DEMs: ', nrow(dem_fin),' ; Sig NonDEMs: ',nrow(nondem_fin))
-  
-}
-
-#### 2. Save and output ####
-save(met_var_relation, nondem_met_var_relation, file = './Association-analysis/variant-metabolite.association.RData')
+save(
+  dem_association,
+  non_dem_association,
+  file = './Association-analysis/variant-metabolite.association.RData'
+)
