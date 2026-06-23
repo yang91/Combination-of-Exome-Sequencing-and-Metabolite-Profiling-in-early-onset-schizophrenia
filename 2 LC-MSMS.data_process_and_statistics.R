@@ -392,6 +392,50 @@ for (mode in modes_to_run) {
   write.table(stat_res,paste0(STAT_DIR, mode ,'.Two_group.Univariate-t.Multivariat_lm.with_annt.txt', sep = '\t', quote = F)
 }
 
+#-------------------------------------------------------------------------------
+# 5. Select metabolites with only MS2 annotation or MS1 and MS2 annotation match
+#-------------------------------------------------------------------------------
+
+############# check if MS1 and MS2 annotation match #####################
+ms1_ant <- rbind(stat_res %>% dplyr::filter(NumberMS1hmdb>0),
+                 stat_res %>% dplyr::filter(NumberMS1kegg>0)) %>% unique()
+              
+ms2_ant <- stat_res %>% dplyr::filter(MS2Metabolite!='-')
+ms2_ant_only <- ms2_ant %>% dplyr::filter(NumberMS1hmdb==0) %>% dplyr::filter(NumberMS1kegg==0) 
+
+ms1_2_ant <- rbind(ms1_ant %>% dplyr::filter(MS2Metabolite!='-'),
+                   ms2_ant %>% dplyr::filter(NumberMS1hmdb>0),
+                   ms2_ant %>% dplyr::filter(NumberMS1kegg>0)) %>% unique()
+ms1_2_ant_match <- vector()
+n <- vector()
+for(i in 1:dim(ms1_2_ant)[1]){
+  tmp <- ms1_2_ant[i,]
+  j <- 0
+  if(grepl("tmp$MS2Metabolite", tmp$MS1hmdbName, perl = T)){
+    j <- j+1
+  }
+  if(grepl("tmp$MS2Metabolite", tmp$MS1keggName, perl = T)){
+    j <- j+1
+  }
+  if(tmp$MS2hmd!='-' && tmp$MS2hmd!='' && !is.na(tmp$MS2hmd) && grepl(tmp$MS2hmd, tmp$MS1hmdbID)){
+    j <- j+1
+  }
+  if(tmp$MS2kegg!='-' && tmp$MS2kegg!='' && !is.na(tmp$MS2kegg) && grepl(tmp$MS2kegg, tmp$MS1hmdbTokegg)){
+    j <- j+1
+  }
+  if(tmp$MS2kegg!='-' &&  tmp$MS2kegg!='' && !is.na(tmp$MS2kegg) &&grepl(tmp$MS2kegg, tmp$MS1keggID)){
+    j <- j+1
+  }
+  
+  if(j>0){  n[i] <- 'TRUE'  }
+  else{ n[i] <- 'FALSE'  }
+}
+ms1_2_ant_match <- ms1_2_ant[as.logical(n),]
+              
+annt_remain_file <- file.path(STAT_DIR, 'Two_group.Univariate-t.Multivariat_lm.with_annt.filter.txt')
+write.table(rbind(ms1_2_ant_match, ms2_ant_only), file = annt_remain_file, row.names = F, col.names = T, sep = '\t', quote = F)
+
+
 cat("\n========== Pipeline Complete ==========\n")
 cat("Run mode:", RUN_MODE, "\n")
 cat("Outputs:\n")
