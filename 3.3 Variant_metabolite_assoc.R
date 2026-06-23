@@ -14,7 +14,7 @@ EXOME_DIR <- "~/EOSCZ/ExomeSeq-Result/"
 VAR_DIR <- "~/EOSCZ/ExomeSeq-Result/variant/"
 META_STAT_DIR  <- "~/EOSCZ/MetaSeq-Result/statistics/"
 CLIN_DIR <- "~/EOSCZ/Clinical_Info/"
-
+NET_DIR <- "~/EOSCZ/Network_file/"
 
 # =============================================================================
 # 1. Data Loading and Preprocessing
@@ -499,9 +499,5 @@ summarize_significant_results(dem_association, non_dem_association)
 # =============================================================================
 # 9. Save Results
 # =============================================================================
-
-save(
-  dem_association,
-  non_dem_association,
-  file = './Association-analysis/variant-metabolite.association.RData'
-)
+output_file <- file.path(NET_DIR, "Variant-metabolite.association.RData")
+save(dem_association, non_dem_association, file = output_file)
