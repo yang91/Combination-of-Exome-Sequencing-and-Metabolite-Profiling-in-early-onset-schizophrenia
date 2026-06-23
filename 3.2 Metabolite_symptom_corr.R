@@ -104,10 +104,8 @@ dem_intensity <- prepare_intensity_data(dem_metabolites, sample_names)
 
 sp_file <- file.path(CLIN_DIR, "sample_information.csv")
 sample_info <- read.csv(sp_file, header = TRUE, stringsAsFactors = FALSE)
-panss <- sample_info[,c('Sample', 'Name', 'Onset_age', 'PANSS.total','BPRS', 'PANSS.positive', 'PANSS.negative', 'Source')]
-
-# Keep only samples present in metabolite data
-panss <- panss[panss$Sample %in% colnames(dem_intensity), ]
+panss <- sample_info[sample_info$with_panss=='Y',
+                     c('Sample', 'Name', 'Onset_age', 'PANSS.total','BPRS', 'PANSS.positive', 'PANSS.negative', 'Source')]
 
 # =============================================================================
 # 3. Prepare PANSS Score Vectors
