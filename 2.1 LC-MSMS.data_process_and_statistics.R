@@ -154,20 +154,15 @@ run_masscleaner_for_mode <- function(ion_mode, spinfo, rsd_threshold = RSD_THRES
     colnames(exp_data) <- name_map[colnames(exp_data)]
   }
 
-  # Remove excluded samples
-  remove_samples <- c("SCZ_04", "SCZ_08", "SCZ_23")
-  exp_data <- exp_data[, !(colnames(exp_data) %in% remove_samples), drop = FALSE]
-  spinfo_filt <- spinfo[!(spinfo$sample.name %in% remove_samples), ]
-
   # Align
-  common_samples <- intersect(colnames(exp_data), spinfo_filt$sample_id)
+  common_samples <- intersect(colnames(exp_data), spinfo$sample_id)
   if (length(common_samples) == 0) {
-    common_samples <- intersect(colnames(exp_data), spinfo_filt$sample.name)
+    common_samples <- intersect(colnames(exp_data), spinfo$sample.name)
     if (length(common_samples) == 0) stop("No matching samples for ", ion_mode)
-    spinfo_filt <- spinfo_filt[spinfo_filt$sample.name %in% common_samples, ]
-    spinfo_filt$sample_id <- spinfo_filt$sample.name
+    spinfo <- spinfo[spinfo$sample.name %in% common_samples, ]
+    spinfo$sample_id <- spinfo$sample.name
   } else {
-    spinfo_filt <- spinfo_filt[spinfo_filt$sample_id %in% common_samples, ]
+    spinfo <- spinfo[spinfo$sample_id %in% common_samples, ]
   }
   exp_data <- exp_data[, common_samples, drop = FALSE]
 
@@ -178,7 +173,7 @@ run_masscleaner_for_mode <- function(ion_mode, spinfo, rsd_threshold = RSD_THRES
   # Build mass_dataset
   object <- create_mass_dataset(
     expression_data = exp_data,
-    sample_info = spinfo_filt,
+    sample_info = spinfo,
     variable_info = var_info[, c("variable_id", "mz", "rt")]
   )
   cat("  Features:", nrow(var_info), "| Samples:", ncol(exp_data), "\n")
@@ -203,9 +198,9 @@ run_masscleaner_for_mode <- function(ion_mode, spinfo, rsd_threshold = RSD_THRES
   ggsave(file.path(MASS_DIR, paste0('massclean.', ion_mode, ".mv_plot.pdf")), p_mv, width = 8, height = 6)
 
   # Filter MV by group
-  qc_id      <- spinfo_filt$sample_id[spinfo_filt$group == "QC"]
-  control_id <- spinfo_filt$sample_id[spinfo_filt$group == "control"]
-  case_id    <- spinfo_filt$sample_id[spinfo_filt$group == "case"]
+  qc_id      <- spinfo$sample_id[spinfo$group == "QC"]
+  control_id <- spinfo$sample_id[spinfo$group == "control"]
+  case_id    <- spinfo$sample_id[spinfo$group == "case"]
 
   object <- object %>%
     mutate_variable_na_freq(according_to_samples = qc_id) %>%
