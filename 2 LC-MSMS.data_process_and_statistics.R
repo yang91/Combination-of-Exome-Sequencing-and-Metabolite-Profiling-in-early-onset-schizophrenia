@@ -243,11 +243,7 @@ run_masscleaner_for_mode <- function(ion_mode, spinfo, rsd_threshold = RSD_THRES
 run_statistics_for_mode <- function(ion_mode, obj, annt_file, spinfo_stat) {
   cat("\n========== Statistics:", toupper(ion_mode), "Mode ==========\n")
 
-  sp_scz_all <- subset(spinfo_stat, group == "case")
-  sp_nor     <- subset(spinfo_stat, group == "control")
-  sp_scz_sub <- subset(sp_scz_all, age <= 25)
-
-  # Univariate t-test
+  # Univariate t-test (only consider group)
   run_univariate_t <- function(obj, sample_info) {
     scz <- subset(sample_info, group == "case")$sample_id
     nor <- subset(sample_info, group == "control")$sample_id
@@ -257,11 +253,10 @@ run_statistics_for_mode <- function(ion_mode, obj, annt_file, spinfo_stat) {
     extract_variable_info(obj_stat) %>% select(variable_id, fc, p_value, p_value_adjust)
   }
 
-  t_all <- run_univariate_t(obj, rbind(sp_scz_all, sp_nor))
-  t_sub <- run_univariate_t(obj, rbind(sp_scz_sub, sp_nor))
+  t_all <- run_univariate_t(obj, spinfo_stat)
 
-  # LM all ages
-  all_age_lm <- function(obj, sample_info) {
+  # LM for all samples (consider group + age+ gender). Drug.dose and disease.duration only consider the EOSCZ samples (consider age + gender + disease.duration + drug.dose).
+  all_sample_lm <- function(obj, sample_info) {
     cat("  LM all ages...\n")
     expr_mat <- obj@expression_data
     lm_res <- lapply(rownames(expr_mat), function(met_id) {
@@ -274,13 +269,15 @@ run_statistics_for_mode <- function(ion_mode, obj, annt_file, spinfo_stat) {
         disease.duration = as.numeric(sample_info$disease.duration),
         drug.dose = as.numeric(sample_info$drug.dose)
       )
-      fit_main <- lm(y ~ group + age + gender, data = df)
+      fit_main <- lm(y ~ group + age + gender, data = df) # all samples
       coef_main <- summary(fit_main)$coefficients
+      
       df_case <- subset(df, group == "case")
-      fit_case <- lm(y ~ age + gender + disease.duration + drug.dose, data = df_case)
+      fit_case <- lm(y ~ age + gender + disease.duration + drug.dose, data = df_case) # only EOSCZ samples
       coef_case <- summary(fit_case)$coefficients
       fit_reduced <- lm(y ~ age + gender, data = df_case)
       anova_res <- anova(fit_reduced, fit_case)
+      
       data.frame(
         variable_id = met_id,
         group_beta = coef_main["groupcase", "Estimate"],
@@ -303,59 +300,7 @@ run_statistics_for_mode <- function(ion_mode, obj, annt_file, spinfo_stat) {
     res
   }
 
-  lm_all <- all_age_lm(obj, spinfo_stat)
-
-  # LM subgroup
-  sub_age_lm <- function(obj, sample_info) {
-    cat("  LM subgroup (<=25)...\n")
-    sp_sub <- subset(sample_info, age <= 25)
-    expr_mat <- obj@expression_data[, sp_sub$sample_id, drop = FALSE]
-    lm_res <- lapply(rownames(expr_mat), function(met_id) {
-      y <- log2(as.numeric(expr_mat[met_id, sp_sub$sample_id]))
-      df <- data.frame(
-        y = y,
-        group = factor(sp_sub$group, levels = c("control", "case")),
-        age = sp_sub$age,
-        gender = sp_sub$gender,
-        disease.duration = sp_sub$disease.duration,
-        drug.dose = sp_sub$drug.dose
-      )
-      fit_main <- lm(y ~ group + age + gender, data = df)
-      coef_main <- summary(fit_main)$coefficients
-      df_case <- subset(df, group == "case")
-      fit_case <- lm(y ~ age + gender + disease.duration + drug.dose, data = df_case)
-      coef_case <- summary(fit_case)$coefficients
-      data.frame(
-        variable_id = met_id,
-        subgroup_beta = coef_main["groupcase", "Estimate"],
-        subgroup_p = coef_main["groupcase", "Pr(>|t|)"],
-        subgroup_duration_beta = coef_case["disease.duration", "Estimate"],
-        subgroup_duration_p = coef_case["disease.duration", "Pr(>|t|)"],
-        subgroup_dose_beta = coef_case["drug.dose", "Estimate"],
-        subgroup_dose_p = coef_case["drug.dose", "Pr(>|t|)"],
-        subgroup_r_squared_main = summary(fit_main)$r.squared,
-        subgroup_r_squared_case = summary(fit_case)$r.squared,
-        stringsAsFactors = FALSE
-      )
-    })
-    res <- do.call(rbind, lm_res)
-    res$subgroup_p_adj <- p.adjust(res$subgroup_p, method = "BH")
-    res$subgroup_duration_p_adj <- p.adjust(res$subgroup_duration_p, method = "BH")
-    res$subgroup_dose_p_adj <- p.adjust(res$subgroup_dose_p, method = "BH")
-    res
-  }
-
-  lm_sub <- sub_age_lm(obj, spinfo_stat)
-
-  # PLS-DA
-  cat("  PLS-DA...\n")
-  dataMatrix <- t(obj@expression_data[, spinfo_stat$sample_id])
-  dataMatrix <- dataMatrix[order(rownames(dataMatrix)), , drop = FALSE]
-  sampleMetadata <- spinfo_stat[order(spinfo_stat$sample_id), ]
-  stopifnot(all(rownames(dataMatrix) == sampleMetadata$sample_id))
-  plsda <- opls(dataMatrix, sampleMetadata$group, permI = 1000)
-  vip <- getVipVn(plsda)
-  vip_df <- data.frame(XCMS.id = names(vip), VIP_group = vip, stringsAsFactors = FALSE)
+  lm_all <- all_sample_lm(obj, spinfo_stat)
 
   # Merge results
   result <- extract_variable_info(obj, with_expression_data = FALSE)[, 1:3]
@@ -363,32 +308,16 @@ run_statistics_for_mode <- function(ion_mode, obj, annt_file, spinfo_stat) {
 
   result <- result %>%
     left_join(t_all, by = c("XCMS.id" = "variable_id")) %>%
-    rename(SCZ_allvsNOR.FC = fc, SCZ_allvsNOR.ttest.p = p_value, SCZ_allvsNOR.ttest.padj = p_value_adjust) %>%
-    left_join(t_sub, by = c("XCMS.id" = "variable_id")) %>%
-    rename(SCZ_AvsNOR.FC = fc, SCZ_AvsNOR.ttest.p = p_value, SCZ_AvsNOR.ttest.padj = p_value_adjust)
-
+    rename(SCZ_allvsNOR.FC = FC, SCZ_allvsNOR.ttest.p = t.p-value, SCZ_allvsNOR.ttest.padj = t.padj)
+  
   result <- result %>%
     left_join(lm_all %>% select(variable_id, group_beta, group_p, group_p_adj,
                                 duration_beta, duration_p, duration_p_adj,
                                 dose_beta, dose_p, dose_p_adj),
               by = c("XCMS.id" = "variable_id")) %>%
-    rename_with(~ paste0("SCZ_allvsNOR.", .), .cols = c(group_beta, group_p, group_p_adj,
-                                                         duration_beta, duration_p, duration_p_adj,
-                                                         dose_beta, dose_p, dose_p_adj)) %>%
-    left_join(lm_sub %>% select(variable_id, subgroup_beta, subgroup_p, subgroup_p_adj,
-                                subgroup_duration_beta, subgroup_duration_p, subgroup_duration_p_adj,
-                                subgroup_dose_beta, subgroup_dose_p, subgroup_dose_p_adj),
-              by = c("XCMS.id" = "variable_id")) %>%
-    rename_with(~ paste0("SCZ_AvsNOR.", .), .cols = starts_with("subgroup_"))
-
-  result <- result %>% left_join(vip_df, by = "XCMS.id") %>%
-    mutate(
-      is.sig.ttest.SCZ_allvsNOR = ifelse(SCZ_allvsNOR.ttest.padj < 0.05, 1, 0),
-      is.sig.ttest.SCZ_AvsNOR = ifelse(SCZ_AvsNOR.ttest.padj < 0.05, 1, 0),
-      is.sig.lm.SCZ_allvsNOR = ifelse(SCZ_allvsNOR.group_p_adj < 0.05, 1, 0),
-      is.sig.lm.SCZ_AvsNOR = ifelse(SCZ_AvsNOR.subgroup_p_adj < 0.05, 1, 0)
-    )
-
+    rename_with(~ paste0("SCZ_allvsNOR.", .), .cols = c(All_sample.LM.beta, All_sample.LM.p-value, All_sample.LM.padj,
+                                                         EOSCZ_sample.LM.duration.beta,EOSCZ_sample.LM.duration.p-value, EOSCZ_sample.LM.duration.padj,
+                                                         EOSCZ_sample.LM.dose.beta, EOSCZ_sample.LM.dose.p-value, EOSCZ_sample.LM.dose.padj))
   # Add annotation
   if (file.exists(annt_file)) {
     annt <- read.csv(annt_file, stringsAsFactors = FALSE)
@@ -409,18 +338,6 @@ run_statistics_for_mode <- function(ion_mode, obj, annt_file, spinfo_stat) {
 
   write.table(result, file = file.path(MASS_DIR, paste0(ion_mode, ".results.txt")),
               row.names = FALSE, sep = "\t", quote = FALSE)
-
-  # Venn
-  venn.diagram(
-    list(
-      t_all = result$XCMS.id[result$is.sig.ttest.SCZ_allvsNOR == 1],
-      t_sub = result$XCMS.id[result$is.sig.ttest.SCZ_AvsNOR == 1],
-      lm_all = result$XCMS.id[result$is.sig.lm.SCZ_allvsNOR == 1],
-      lm_sub = result$XCMS.id[result$is.sig.lm.SCZ_AvsNOR == 1]
-    ),
-    filename = file.path(STAT_DIR, paste0('LM.', ion_mode, ".venn.tiff")),
-    imagetype = "tiff"
-  )
 
   invisible(result)
 }
