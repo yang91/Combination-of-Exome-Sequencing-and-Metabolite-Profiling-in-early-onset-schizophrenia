@@ -502,8 +502,8 @@ summarize_significant_results(dem_association, non_dem_association)
 output_file <- file.path(NET_DIR, "Variant-metabolite.association.RData")
 save(dem_association, non_dem_association, file = output_file)
 
-dem_file <- file.path(META_STAT_DIR,'DEMs_with_annt.txt)
+dem_file <- file.path(META_STAT_DIR,'DEMs_with_annt.txt')
 write.table(dem_metabolites, file = dem_file, quote = F, row.names = F)
 
-non_dem_file <- file.path(META_STAT_DIR,'Non-DEMs_with_annt.txt)
+non_dem_file <- file.path(META_STAT_DIR,'Non-DEMs_with_annt.txt')
 write.table(non_dem_metabolites, file = non_dem_file, quote = F, row.names = F)
