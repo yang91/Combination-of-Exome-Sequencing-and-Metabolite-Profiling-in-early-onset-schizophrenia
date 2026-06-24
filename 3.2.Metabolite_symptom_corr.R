@@ -222,5 +222,5 @@ select_cor_negative$type <- 'PANSS_negative_cor'
 
 sig_cor <- unique(rbind(select_cor_total, select_cor_positive, select_cor_negative))
 
-write.table(sig_cor, file = paste0(CLIN_DIR, '/MultiVar_LM.DEMs_correlated_with_PANSS.txt',
+write.table(sig_cor, file = paste0(CLIN_DIR, '/MultiVar_LM.DEMs_correlated_with_PANSS.txt'),
   row.names = FALSE, col.names = TRUE, quote = TRUE, sep = '\t')
