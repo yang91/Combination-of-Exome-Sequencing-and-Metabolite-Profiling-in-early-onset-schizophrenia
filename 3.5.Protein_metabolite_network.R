@@ -17,8 +17,8 @@ load(file.path(NET_DIR, "Variant-metabolite.association.RData"))
 load(file.path(NET_DIR, "DEM_NonDEM.correlation.RData"))
 sig_cor_pair <- subset(dem_cor_flat, q<0.05&abs(cor)>=0.9) # select significant metabolite correlation pairs
 # Select the correlation pairs containing at least one DEM
-dem_cor_pair <- rbind(subset(sig_cor_pair, row %in% dem_association_sig), 
-                      subset(sig_cor_pair, column %in% dem_association_sig)) %>% unique()
+dem_cor_pair <- rbind(subset(sig_cor_pair, row %in% dem_association), 
+                      subset(sig_cor_pair, column %in% dem_association)) %>% unique()
 
 # Gene score evaluation model from an in-house script of unpublished data
 gs_file <- file.path(EXOME_DIR, "gene_score.high-risk.txt")
