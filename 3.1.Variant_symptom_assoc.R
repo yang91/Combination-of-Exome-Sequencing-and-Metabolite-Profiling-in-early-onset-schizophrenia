@@ -184,7 +184,7 @@ uniq_genes <- data.frame(
 mut_stat <- apply(uniq_genes, 1, function(x) {
   gene_id  <- x["Gene"]
   mut_sp   <- unlist(strsplit(x["Sample"], ','))  # already deduplicated
-  gene_sym <- gs_file[gs_file$ENSEMBL == gene_id, "SYMBOL"]
+  gene_sym <- gene_scores[gene_scores$ENSEMBL == gene_id, "SYMBOL"]
   if (length(gene_sym) == 0) gene_sym <- NA
   
   # ---- Prepare PANSS data frame ----
@@ -244,5 +244,5 @@ colnames(mut_stat) <- c(
 sig_mut <- mut_stat %>%
   filter(if_any(c(P_total, P_positive, P_negative), ~ .x < 0.05))
 
-write.table(sig_mut, file = paste0(CLIN_DIR, '/High_risk_genes_associated_with_PANSS.txt',
+write.table(sig_mut, file = paste0(CLIN_DIR, '/High_risk_genes_associated_with_PANSS.txt'),
   row.names = FALSE, col.names = TRUE, quote = TRUE, sep = '\t')
