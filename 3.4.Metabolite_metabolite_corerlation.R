@@ -119,7 +119,7 @@ rownames(all_intensity) <- all_intensity$XCMS.id
 dem_cor <- rcorr(as.matrix(t(all_intensity[,2:49])), type = 'spearman')
 dem_cor_flat <- flatternCorrMatrix(dem_cor$r, dem_cor$P)
 dem_cor_flat$q <- p.adjust(dem_cor_flat$p, method = 'BH')
-save(dem_cor_flat,'./MultiVar.LM.dem_cor_flat.rds')
+save(dem_cor_flat,'./MultiVar.LM.dem_cor_flat.Rdata')
 
 # =============================================================================
 # 3. Save Results
