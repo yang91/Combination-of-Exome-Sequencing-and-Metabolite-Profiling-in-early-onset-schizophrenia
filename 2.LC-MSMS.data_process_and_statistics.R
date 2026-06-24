@@ -1,4 +1,4 @@
-===============================================================================
+#===============================================================================
 # Complete Metabolomics Pipeline
 # Phase 1: XCMS Peak Picking -> Phase 2: Masscleaner QC -> Phase 3: Statistics
 # Supports: "positive" or "negative" modes via command line argument. 
@@ -40,6 +40,11 @@ RESULT_DIR      <- "~/EOSCZ/MetaSeq-Result/"
 XCMS_OUT        <- file.path(RESULT_DIR, "XCMS/")
 MASS_DIR        <- file.path(RESULT_DIR, "tidymass/")
 STAT_DIR        <- file.path(RESULT_DIR, "statistics/")
+SAMPLE_LIST     <- "~/EOSCZ/MetaSeq-Data/sample_list.txt"
+SPINFO_FILE     <- "~/EOSCZ/Clinical_Info/sample_info.csv"
+RSD_THRESHOLD   <- 0.3
+GROUP_COLORS    <- c(SCZ = "#FBABA5", NOR = "#33CCD0", QC = "#63AA83")
+N_CORES         <- 4
 
 #-------------------------------------------------------------------------------
 # 1. Ion-Mode-Specific Functions (positive or Negative)
@@ -302,18 +307,26 @@ run_statistics_for_mode <- function(ion_mode, obj, annt_file, spinfo_stat) {
 
   lm_all <- all_sample_lm(obj, spinfo_stat)
 
-  # Merge results
-  result <- extract_variable_info(obj, with_expression_data = FALSE)[, 1:3]
-  colnames(result)[1] <- "XCMS.id"
+  result <- result %>%
+  left_join(t_all, by = c("XCMS.id" = "variable_id")) %>%
+  rename(SCZ_allvsNOR.FC = fc,
+         SCZ_allvsNOR.ttest.p = p_value,
+         SCZ_allvsNOR.ttest.padj = p_value_adjust)
 
-  result <- result %>%
-    left_join(t_all, by = c("XCMS.id" = "variable_id")) %>%
-    rename(SCZ_allvsNOR.FC = FC, SCZ_allvsNOR.ttest.p = t.p-value, SCZ_allvsNOR.ttest.padj = t.padj)
-  
-  result <- result %>%
-    left_join(lm_all %>% select(variable_id, group_beta, group_p, group_p_adj,
-                                duration_beta, duration_p, duration_p_adj,
-                                dose_beta, dose_p, dose_p_adj),
+result <- result %>%
+  left_join(lm_all %>% select(variable_id, group_beta, group_p, group_p_adj,
+                              duration_beta, duration_p, duration_p_adj,
+                              dose_beta, dose_p, dose_p_adj),
+            by = c("XCMS.id" = "variable_id")) %>%
+  rename(All_sample.LM.beta = group_beta,
+         All_sample.LM.p = group_p,
+         All_sample.LM.padj = group_p_adj,
+         EOSCZ_sample.LM.duration.beta = duration_beta,
+         EOSCZ_sample.LM.duration.p = duration_p,
+         EOSCZ_sample.LM.duration.padj = duration_p_adj,
+         EOSCZ_sample.LM.dose.beta = dose_beta,
+         EOSCZ_sample.LM.dose.p = dose_p,
+         EOSCZ_sample.LM.dose.padj = dose_p_adj),
               by = c("XCMS.id" = "variable_id")) %>%
     rename_with(~ paste0("SCZ_allvsNOR.", .), .cols = c(All_sample.LM.beta, All_sample.LM.p-value, All_sample.LM.padj,
                                                          EOSCZ_sample.LM.duration.beta,EOSCZ_sample.LM.duration.p-value, EOSCZ_sample.LM.duration.padj,
@@ -411,10 +424,10 @@ n <- vector()
 for(i in 1:dim(ms1_2_ant)[1]){
   tmp <- ms1_2_ant[i,]
   j <- 0
-  if(grepl("tmp$MS2Metabolite", tmp$MS1hmdbName, perl = T)){
+  if(grepl(tmp$MS2Metabolite, tmp$MS1hmdbName, perl = T)){
     j <- j+1
   }
-  if(grepl("tmp$MS2Metabolite", tmp$MS1keggName, perl = T)){
+  if(grepl(tmp$MS2Metabolite, tmp$MS1keggName, perl = T)){
     j <- j+1
   }
   if(tmp$MS2hmd!='-' && tmp$MS2hmd!='' && !is.na(tmp$MS2hmd) && grepl(tmp$MS2hmd, tmp$MS1hmdbID)){
