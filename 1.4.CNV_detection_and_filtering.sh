@@ -11,8 +11,8 @@ set -euo pipefail
 
 #-------------------------- Parameters --------------------------
 REF_INDEX_DIR="${HOME}/EOSCZ/Ref_and_Index/"
-REF_FA="${REF_INDEX_DIR}/gatk-hg38bundle/Homo_sapiens_assembly38.fa"
-DICT="${REF_INDEX_DIR}/gatk-hg38bundle/Homo_sapiens_assembly38.dict"
+REF_FA="${REF_INDEX_DIR}/GATK-hg38bundle/Homo_sapiens_assembly38.fa"
+DICT="${REF_INDEX_DIR}/GATK-hg38bundle/Homo_sapiens_assembly38.dict"
 BWA_INDEX="${REF_INDEX_DIR}/BWA_INDEX"
 EXON="${REF_INDEX_DIR}/hg38_exon.merge.bed"
 BED_FILE="${REF_INDEX_DIR}/T086V4_MT.merged.success.liftover.to.hg38.bed" # targer region bed files
@@ -227,7 +227,7 @@ main() {
     # Check the analysis tools
     check_cmd xhmm
     check_cmd java
-    check_cmd $pseq
+    check_cmd pseq
 
     # Check the input files
     check_file "$REF_FA"
