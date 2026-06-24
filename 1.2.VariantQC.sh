@@ -106,7 +106,8 @@ if [[ ! -f "merge.VQSR.low_complexity.vcf.bgz" ]]; then
     zcat "${RESULT_DIR}/GATK/merge.VQSR.low_complexity.vcf.gz" | bgzip -c > "${RESULT_DIR}/GATK/merge.VQSR.low_complexity.vcf.bgz"
 fi
 
-cat > run_hail_qc.py << 'PYEOF'
+export RESULT_DIR="${RESULT_DIR}"
+cat > run_hail_qc.py << "PYEOF"
 import hail as hl
 import sys
 
