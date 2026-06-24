@@ -2,7 +2,7 @@
 ## Please store or use the soft links to guarantee all the seqdata, reference annotations and output results would be stored in the same project directory.
 
 #!/usr/bin/bash
-set -euo pipefai
+set -euo pipefail
 
 ###################################################################################
 # Set environment parameters
