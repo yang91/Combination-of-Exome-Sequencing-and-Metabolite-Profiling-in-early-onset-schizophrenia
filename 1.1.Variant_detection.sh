@@ -9,6 +9,7 @@
 GROUP="SCZ" # modify this to NOR if you are running normal sample analysis
 
 # input/output path
+PROJECT_DIR="${HOME}/EOSCZ"
 SEQDATA_DIR="${HOME}/EOSCZ/ExomeSeq-Data"
 RESULT_DIR="${HOME}/EOSCZ/ExomeSeq-Result"
 REF_INDEX_DIR="${HOME}/EOSCZ/Ref_and_Index/"
@@ -100,7 +101,7 @@ for SAMPLE in "${SAMPLES[@]}"; do
     echo "[${SAMPLE}] Step 2/6: Picard MarkDuplicates ..."
     if [[ ! -f "${UNALI_BAM}" ]]; then
         java -jar picard.jar FastqToSam FASTQ="${R1}" FASTQ2="${R2}" \
-            OUTPUT="{UNALI_BAM}" READ_GROUP_NAME=A00682 SAMPLE_NAME=${SAMPLE} \
+            OUTPUT="{$UNALI_BAM}" READ_GROUP_NAME=A00682 SAMPLE_NAME=${SAMPLE} \
             LIBRARY_NAME=Illumina PLATFORM_UNIT=HJVWVDSXX PLATFORM=Illumina \
              >> "${LOG}" 2>&1
         
@@ -258,7 +259,7 @@ else
     fi
 fi
 
-gatk GenotypeGVCFs --java-options "-Xmx4g" -R "${REF_FA}" 、
+gatk GenotypeGVCFs --java-options "-Xmx4g" -R "${REF_FA}" \
   -V "${COMBINED_GVCF}" -O "${GT_GVCF}" >> "${COMBINE_DIR}/GenotypeGVCFs.log" 2>&1
 
 gatk VariantRecalibrator --java-options "-Xmx4g -Xms4g" \
