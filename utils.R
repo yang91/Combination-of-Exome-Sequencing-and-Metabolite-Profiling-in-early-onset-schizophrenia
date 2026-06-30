@@ -375,13 +375,13 @@ extract_panss_scores <- function(spinfo) {
     stop("Missing PANSS columns: ", paste(missing, collapse = ", "))
   }
 
-  # Determine sample ID column
-  id_col <- if ("Sample" %in% colnames(spinfo)) "Sample" else rownames(spinfo)
+  # Determine sample ID vector (fix: was returning the string "Sample" as a single name)
+  id_vec <- if ("Sample" %in% colnames(spinfo)) spinfo$Sample else rownames(spinfo)
 
   list(
-    total    = setNames(as.numeric(spinfo$PANSS.total), id_col),
-    positive = setNames(as.numeric(spinfo$PANSS.positive), id_col),
-    negative = setNames(as.numeric(spinfo$PANSS.negative), id_col)
+    total    = setNames(as.numeric(spinfo$PANSS.total), id_vec),
+    positive = setNames(as.numeric(spinfo$PANSS.positive), id_vec),
+    negative = setNames(as.numeric(spinfo$PANSS.negative), id_vec)
   )
 }
 
@@ -572,17 +572,14 @@ build_variant_matrices <- function(filtered_vep, sample_names,
 #' @return Filtered data frame with only significant associations.
 filter_significant_assoc <- function(assoc_df,
                                      threshold = PADJ_THRESHOLD,
-                                     prefix = c("intensity", "rank")) {
-  # Build column names dynamically (handles both naming conventions)
-  col_patterns <- c(
-    paste0(prefix, ".scz_var.*nor.*padj"),
-    paste0(prefix, ".scz_var.*scz.*padj")
-  )
-
-  padj_cols <- grep(paste(col_patterns, collapse = "|"), colnames(assoc_df), value = TRUE)
+                                     padj_cols = NULL) {
+  if (is.null(padj_cols)) {
+    # Auto-detect all columns ending in .padj
+    padj_cols <- grep("\\.padj$", colnames(assoc_df), value = TRUE)
+  }
 
   if (length(padj_cols) < 4) {
-    warning("Expected 4 padj columns but found ", length(padj_cols), ": ",
+    warning("Expected at least 4 padj columns but found ", length(padj_cols), ": ",
             paste(padj_cols, collapse = ", "))
   }
 
