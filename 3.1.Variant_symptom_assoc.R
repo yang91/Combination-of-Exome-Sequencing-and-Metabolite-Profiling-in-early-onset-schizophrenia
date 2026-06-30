@@ -1,43 +1,36 @@
+# =============================================================================
+# 3.1.Variant_symptom_assoc.R
+# Variant-Symptom Association Analysis
+# =============================================================================
+# Associates high-risk gene variants with PANSS symptom scores using t-tests.
+#
+# Input:  VEP annotations, disease-causing variants, gene scores, sample info
+# Output: PANSS_ASSOC_OUTPUT (significant gene-PANSS associations)
+# =============================================================================
+
+source("config.R")
+source("utils.R")
+
 library(ggsignif)
 library(cowplot)
 
 # =============================================================================
-# 0. Configuration and Path Setup
+# 1. Load Data
 # =============================================================================
 
-EXOME_DIR <- "~/EOSCZ/ExomeSeq-Result/"
-VAR_DIR <- "~/EOSCZ/ExomeSeq-Result/variant"
-CLIN_DIR <- "~/EOSCZ/Clinical_Info/"
+# Gene scores (used for filtering high-risk genes)
+gene_scores <- read.csv(GENE_SCORE_FILE, sep = '\t', stringsAsFactors = FALSE, row.names = 1)
 
-# ============================================================================
-# 1. Load and Process Mutation Data
-# ============================================================================
+# Disease-causing variants with OR > 1 in genes with GS > 4
+disease_variants <- read.csv(DISEASE_VARIANT_FILE, sep = '\t', stringsAsFactors = FALSE, row.names = 1)
 
-# Gene score evaluation model from an in-house script of unpublished data
-gs_file <- file.path(EXOME_DIR, "gene_score.high-risk.txt")
-gene_scores <- read.csv(gs_file, sep = '\t', stringsAsFactors = FALSE, row.names = 1)
+# VEP annotation results (skip header lines)
+vep_results <- read.csv(VEP_ANNOT_FILE, sep = '\t', stringsAsFactors = FALSE, skip = VEP_SKIP_LINES, row.names = 1)
 
-# Load disease-causing variants with OR > 1 in genes with GS > 4
-var_file <- file.path(VAR_DIR, "disease_causing_ORgt1_variants_in_GSgt4_gene.txt")
-disease_variants <- read.csv(var_file, sep = '\t', stringsAsFactors = FALSE, row.names = 1)
-
-# Load VEP annotation results (skip first 44 header lines)
-vep_file <- file.path(VAR_DIR, "Maf_0.05.potential_harmful.ORgt1_variants.txt")
-vep_results <- read.csv(vep_file, sep = '\t', stringsAsFactors = FALSE, skip = 44, row.names = 1)
-
-# Load sample information
-sp_file <- file.path(CLIN_DIR, "sample_information.csv")
-sample_info <- read.csv(sp_file, header = TRUE, stringsAsFactors = FALSE)
-
-# Exclude QC samples and sort by group
-sample_info <- sample_info %>%
-  dplyr::filter(group != 'QC') %>%
-  dplyr::arrange(group)
-
-rownames(sample_info) <- sample_info$sample.name
-sample_names <- sample_info$sample.name
+# Sample information
+sample_info <- load_sample_info()
+sample_names <- rownames(sample_info)
 n_samples <- length(sample_names)
-
 
 # =============================================================================
 # 2. Variant Data Processing (Variant-Level)
@@ -50,58 +43,10 @@ filtered_vep <- vep_results %>%
     X.Uploaded_variation %in% disease_variants$X.Uploaded_variation
   )
 
-variant_list <- unique(filtered_vep$X.Uploaded_variation)
-n_variants <- length(variant_list)
-
-# Initialize matrices:
-# var_presence: 1 = sample carries the variant, 0 = does not carry
-# var_effect: variant impact level (4 = HIGH, 3 = MODERATE, 2 = LOW, 1 = MODIFIER)
-var_presence <- matrix(0, nrow = n_variants, ncol = n_samples)
-var_effect   <- matrix(0, nrow = n_variants, ncol = n_samples)
-colnames(var_presence) <- colnames(var_effect) <- sample_names
-rownames(var_presence) <- rownames(var_effect) <- variant_list
-
-# Impact level mapping
-EFFECT_LEVELS <- c('HIGH' = 4, 'MODERATE' = 3, 'LOW' = 2, 'MODIFIER' = 1)
-
-# Process each variant
-for (i in seq_len(n_variants)) {
-  variant_id <- variant_list[i]
-  variant_records <- dplyr::filter(filtered_vep, X.Uploaded_variation == variant_id)
-  
-  # Extract sample IDs and impact levels
-  variant_info <- apply(variant_records, 1, function(row) {
-    fields <- unlist(strsplit(row, ';'))
-    
-    # Extract sample ID
-    sample_field <- fields[grepl('IND=', fields)]
-    sample_id <- gsub('IND=', '', sample_field)
-    
-    # Extract impact level
-    impact_field <- fields[grepl('IMPACT=', fields)]
-    impact_level <- gsub('IMPACT=', '', impact_field)
-    
-    data.frame(sample = sample_id, impact = impact_level, stringsAsFactors = FALSE)
-  })
-  
-  # Combine all records
-  variant_df <- do.call(rbind, variant_info)
-  variant_df$impact_num <- EFFECT_LEVELS[variant_df$impact]
-  
-  # Get samples carrying this variant (deduplicated)
-  carrier_samples <- unique(variant_df$sample)
-  carrier_samples <- carrier_samples[carrier_samples %in% sample_names]
-  
-  # Fill matrices: record maximum impact level per sample
-  for (sample_id in carrier_samples) {
-    sample_effects <- variant_df$impact_num[variant_df$sample == sample_id]
-    var_presence[i, sample_id] <- 1
-    var_effect[i, sample_id] <- max(sample_effects, na.rm = TRUE)
-  }
-}
-
-rownames(var_effect) <- rownames(var_presence) <- variant_list
-
+# Build per-variant presence (0/1) and effect (impact level 1-4) matrices
+variant_mats <- build_variant_matrices(filtered_vep, sample_names)
+var_presence <- variant_mats$presence
+var_effect   <- variant_mats$effect
 
 # =============================================================================
 # 3. Variant Data Aggregation (Gene-Level)
@@ -110,9 +55,8 @@ rownames(var_effect) <- rownames(var_presence) <- variant_list
 gene_list <- unique(disease_variants$Gene)
 n_genes <- length(gene_list)
 
-# Initialize gene-level matrices
-gene_presence <- matrix(0, nrow = n_genes, ncol = n_samples)  # whether sample carries any variant in gene
-gene_effect   <- matrix(0, nrow = n_genes, ncol = n_samples)  # maximum impact level in gene
+gene_presence <- matrix(0, nrow = n_genes, ncol = n_samples)
+gene_effect   <- matrix(0, nrow = n_genes, ncol = n_samples)
 colnames(gene_presence) <- colnames(gene_effect) <- sample_names
 rownames(gene_presence) <- rownames(gene_effect) <- gene_list
 
@@ -122,17 +66,16 @@ for (i in seq_len(n_genes)) {
     dplyr::filter(Gene == gene_name) %>%
     dplyr::pull(X.Uploaded_variation)
   
-  # Calculate variant count and maximum impact per sample
   for (j in seq_len(n_samples)) {
     sample_id <- sample_names[j]
-    sample_variants <- gene_variants[gene_variants %in% variant_list]
+    sample_variants <- gene_variants[gene_variants %in% rownames(var_presence)]
     
     if (length(sample_variants) > 0) {
       presence_values <- as.numeric(var_presence[sample_variants, sample_id])
       effect_values <- as.numeric(var_effect[sample_variants, sample_id])
       
-      gene_presence[i, j] <- min(sum(presence_values), 1)  # cap at 1 (presence/absence)
-      gene_effect[i, j] <- max(effect_values)
+      gene_presence[i, j] <- min(sum(presence_values), 1)
+      gene_effect[i, j]   <- max(effect_values)
     }
   }
 }
@@ -141,32 +84,22 @@ for (i in seq_len(n_genes)) {
 disease_variants$sample <- apply(disease_variants, 1, function(row) {
   variant_id <- row[1]
   vep_records <- vep_results[vep_results$X.Uploaded_variation == variant_id, ]
-  
-  # Extract sample IDs
-  sample_ids <- apply(vep_records, 1, function(vep_row) {
-    fields <- unlist(strsplit(vep_row[14], split = ';'))
-    gsub('IND=', '', fields[1])
-  })
-  
-  # Filter valid samples and deduplicate
+  sample_ids <- extract_vep_samples(vep_records)$sample
   valid_samples <- sample_ids[sample_ids %in% sample_names]
   paste(unique(valid_samples), collapse = ',')
 })
 
-
-# ============================================================================
+# =============================================================================
 # 4. Load PANSS Score Data
-# ============================================================================
+# =============================================================================
 
-sp_file <- file.path(CLIN_DIR, "sample_information.csv")
-sample_info <- read.csv(sp_file, header = TRUE, stringsAsFactors = FALSE)
-panss <- sample_info[sample_info$with_panss=='Y',
-                     c('Sample', 'Name', 'Onset_age', 'PANSS.total','BPRS', 'PANSS.positive', 'PANSS.negative', 'Source')]
+panss <- sample_info[sample_info$with_panss == 'Y',
+                     c('Sample', 'Name', 'Onset_age', 'PANSS.total',
+                       'BPRS', 'PANSS.positive', 'PANSS.negative', 'Source')]
 
-
-# ============================================================================
+# =============================================================================
 # 5. Compare PANSS Scores Between Mutated and Non-Mutated Samples
-# ============================================================================
+# =============================================================================
 
 # Map each gene to its mutated samples
 gene2sample <- tapply(disease_variants$sample, disease_variants$Gene, function(s) {
@@ -183,7 +116,7 @@ uniq_genes <- data.frame(
 # Test each gene individually
 mut_stat <- apply(uniq_genes, 1, function(x) {
   gene_id  <- x["Gene"]
-  mut_sp   <- unlist(strsplit(x["Sample"], ','))  # already deduplicated
+  mut_sp   <- unlist(strsplit(x["Sample"], ','))
   gene_sym <- gene_scores[gene_scores$ENSEMBL == gene_id, "SYMBOL"]
   if (length(gene_sym) == 0) gene_sym <- NA
   
@@ -205,8 +138,8 @@ mut_stat <- apply(uniq_genes, 1, function(x) {
     
     # Calculate group means
     mean_tbl <- panss_dt %>%
-      group_by(mutype) %>%
-      summarise(across(
+      dplyr::group_by(mutype) %>%
+      dplyr::summarise(dplyr::across(
         c(panss_total, panss_positive, panss_negative),
         \(x) mean(x, na.rm = TRUE)
       ))
@@ -240,9 +173,21 @@ colnames(mut_stat) <- c(
   "Mean_Negative_Mut", "Mean_Negative_UnMut"
 )
 
+# Convert numeric columns
+num_cols <- c("P_total", "P_positive", "P_negative",
+              "Mean_Total_Mut", "Mean_Total_UnMut",
+              "Mean_Positive_Mut", "Mean_Positive_UnMut",
+              "Mean_Negative_Mut", "Mean_Negative_UnMut")
+mut_stat[num_cols] <- lapply(mut_stat[num_cols], as.numeric)
+
 # Extract significant results (p < 0.05 in any domain)
 sig_mut <- mut_stat %>%
-  filter(if_any(c(P_total, P_positive, P_negative), ~ .x < 0.05))
+  dplyr::filter(dplyr::if_any(c(P_total, P_positive, P_negative), ~ .x < 0.05))
 
-write.table(sig_mut, file = paste0(CLIN_DIR, '/High_risk_genes_associated_with_PANSS.txt'),
-  row.names = FALSE, col.names = TRUE, quote = TRUE, sep = '\t')
+write.table(sig_mut, file = PANSS_ASSOC_OUTPUT,
+            row.names = FALSE, col.names = TRUE, quote = TRUE, sep = '\t')
+
+message("Variant-symptom association analysis complete.")
+message("Results saved to: ", PANSS_ASSOC_OUTPUT)
+message("Total genes tested: ", n_genes)
+message("Significant associations: ", nrow(sig_mut))
