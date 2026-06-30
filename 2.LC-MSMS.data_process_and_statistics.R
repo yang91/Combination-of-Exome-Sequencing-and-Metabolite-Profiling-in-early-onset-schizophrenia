@@ -1,14 +1,18 @@
 #===============================================================================
+# 2.LC-MSMS.data_process_and_statistics.R
 # Complete Metabolomics Pipeline
 # Phase 1: XCMS Peak Picking -> Phase 2: Masscleaner QC -> Phase 3: Statistics
-# Supports: "positive" or "negative" modes via command line argument. 
-# Usage: Rscript pipeline.R [pos|neg|both]
+# Supports: "positive", "negative", or "both" modes via command line argument.
+# Usage: Rscript 2.LC-MSMS.data_process_and_statistics.R [positive|negative|both]
 #===============================================================================
+
+source("config.R")
+source("utils.R")
 
 args <- commandArgs(trailingOnly = TRUE)
 RUN_MODE <- ifelse(length(args) > 0, args[1], "both")
-if (!RUN_MODE %in% c("positive","negative")) {
-  stop("Usage: Rscript pipeline.R [positive|negative]")
+if (!RUN_MODE %in% c("positive", "negative", "both")) {
+  stop("Usage: Rscript 2.LC-MSMS.data_process_and_statistics.R [positive|negative|both]")
 }
 
 #===============================================================================
@@ -33,21 +37,7 @@ library(pls)
 library(VennDiagram)
 
 #-------------------------------------------------------------------------------
-# 0. Configuration
-#-------------------------------------------------------------------------------
-SEQDATA_DIR     <- file.path("~/EOSCZ/MetaSeq-Data", "convert_data") # The input files is the .mzML converted from .raw file format using ProteoWizard
-RESULT_DIR      <- "~/EOSCZ/MetaSeq-Result/"
-XCMS_OUT        <- file.path(RESULT_DIR, "XCMS/")
-MASS_DIR        <- file.path(RESULT_DIR, "tidymass/")
-STAT_DIR        <- file.path(RESULT_DIR, "statistics/")
-SAMPLE_LIST     <- "~/EOSCZ/MetaSeq-Data/sample_list.txt"
-SPINFO_FILE     <- "~/EOSCZ/Clinical_Info/sample_info.csv"
-RSD_THRESHOLD   <- 0.3
-GROUP_COLORS    <- c(SCZ = "#FBABA5", NOR = "#33CCD0", QC = "#63AA83")
-N_CORES         <- 4
-
-#-------------------------------------------------------------------------------
-# 1. Ion-Mode-Specific Functions (positive or Negative)
+# 1. Ion-Mode-Specific Functions
 #-------------------------------------------------------------------------------
 
 #' Phase 1: XCMS workflow for ONE ion mode
@@ -59,8 +49,8 @@ run_xcms_for_mode <- function(ion_mode, file_list, cent_params, merge_params) {
     pdata = new("NAnnotatedDataFrame", file_list[, c("sample_name", "group")]),
     mode = "onDisk"
   )
-  cat("  Samples:", length(file_list$file_name), 
-      "| MS1:", sum(msLevel(raw) == 1), 
+  cat("  Samples:", length(file_list$file_name),
+      "| MS1:", sum(msLevel(raw) == 1),
       "| MS2:", sum(msLevel(raw) == 2), "\n")
 
   # TIC
@@ -135,7 +125,7 @@ run_xcms_for_mode <- function(ion_mode, file_list, cent_params, merge_params) {
   write.csv(peak_simp, file.path(XCMS_OUT, paste0(ion_mode, ".Peak_table.simplify.csv")), quote = FALSE)
 
   cat("  Output:", nrow(peak_table), "features x", ncol(peak_table) - ncol(feat_info), "samples\n")
-  invisible(list(raw = raw, peaks = peaks, refined = refined, aligned = aligned, 
+  invisible(list(raw = raw, peaks = peaks, refined = refined, aligned = aligned,
                  grouped = filled, peak_table = peak_table, peak_simp = peak_simp))
 }
 
@@ -145,10 +135,11 @@ run_masscleaner_for_mode <- function(ion_mode, spinfo, rsd_threshold = RSD_THRES
   xcms_file <- file.path(XCMS_OUT, paste0(ion_mode, ".Peak_table.simplify.csv"))
   peak <- read.csv(xcms_file, stringsAsFactors = FALSE, row.names = 1)
   var_info <- data.frame(
-  variable_id = rownames(peak),
-  mz = peak$mz,
-  rt = peak$rt,
-  stringsAsFactors = FALSE
+    variable_id = rownames(peak),
+    mz = peak$mz,
+    rt = peak$rt,
+    stringsAsFactors = FALSE
+  )
   exp_data <- peak[, !(colnames(peak) %in% c("mz", "rt"))]
 
   rownames(exp_data) <- var_info$variable_id
@@ -260,7 +251,8 @@ run_statistics_for_mode <- function(ion_mode, obj, annt_file, spinfo_stat) {
 
   t_all <- run_univariate_t(obj, spinfo_stat)
 
-  # LM for all samples (consider group + age+ gender). Drug.dose and disease.duration only consider the EOSCZ samples (consider age + gender + disease.duration + drug.dose).
+  # LM for all samples (consider group + age + gender).
+  # Drug.dose and disease.duration only for EOSCZ samples.
   all_sample_lm <- function(obj, sample_info) {
     cat("  LM all ages...\n")
     expr_mat <- obj@expression_data
@@ -274,15 +266,15 @@ run_statistics_for_mode <- function(ion_mode, obj, annt_file, spinfo_stat) {
         disease.duration = as.numeric(sample_info$disease.duration),
         drug.dose = as.numeric(sample_info$drug.dose)
       )
-      fit_main <- lm(y ~ group + age + gender, data = df) # all samples
+      fit_main <- lm(y ~ group + age + gender, data = df)
       coef_main <- summary(fit_main)$coefficients
-      
+
       df_case <- subset(df, group == "case")
-      fit_case <- lm(y ~ age + gender + disease.duration + drug.dose, data = df_case) # only EOSCZ samples
+      fit_case <- lm(y ~ age + gender + disease.duration + drug.dose, data = df_case)
       coef_case <- summary(fit_case)$coefficients
       fit_reduced <- lm(y ~ age + gender, data = df_case)
       anova_res <- anova(fit_reduced, fit_case)
-      
+
       data.frame(
         variable_id = met_id,
         group_beta = coef_main["groupcase", "Estimate"],
@@ -307,30 +299,24 @@ run_statistics_for_mode <- function(ion_mode, obj, annt_file, spinfo_stat) {
 
   lm_all <- all_sample_lm(obj, spinfo_stat)
 
-  result <- result %>%
-  left_join(t_all, by = c("XCMS.id" = "variable_id")) %>%
-  rename(SCZ_allvsNOR.FC = fc,
-         SCZ_allvsNOR.ttest.p = p_value,
-         SCZ_allvsNOR.ttest.padj = p_value_adjust)
+  # Merge t-test and LM results
+  result <- lm_all %>%
+    left_join(t_all, by = "variable_id") %>%
+    rename(
+      SCZ_allvsNOR.FC = fc,
+      SCZ_allvsNOR.ttest.p = p_value,
+      SCZ_allvsNOR.ttest.padj = p_value_adjust,
+      All_sample.LM.beta = group_beta,
+      All_sample.LM.p = group_p,
+      All_sample.LM.padj = group_p_adj,
+      EOSCZ_sample.LM.duration.beta = duration_beta,
+      EOSCZ_sample.LM.duration.p = duration_p,
+      EOSCZ_sample.LM.duration.padj = duration_p_adj,
+      EOSCZ_sample.LM.dose.beta = dose_beta,
+      EOSCZ_sample.LM.dose.p = dose_p,
+      EOSCZ_sample.LM.dose.padj = dose_p_adj
+    )
 
-result <- result %>%
-  left_join(lm_all %>% select(variable_id, group_beta, group_p, group_p_adj,
-                              duration_beta, duration_p, duration_p_adj,
-                              dose_beta, dose_p, dose_p_adj),
-            by = c("XCMS.id" = "variable_id")) %>%
-  rename(All_sample.LM.beta = group_beta,
-         All_sample.LM.p = group_p,
-         All_sample.LM.padj = group_p_adj,
-         EOSCZ_sample.LM.duration.beta = duration_beta,
-         EOSCZ_sample.LM.duration.p = duration_p,
-         EOSCZ_sample.LM.duration.padj = duration_p_adj,
-         EOSCZ_sample.LM.dose.beta = dose_beta,
-         EOSCZ_sample.LM.dose.p = dose_p,
-         EOSCZ_sample.LM.dose.padj = dose_p_adj),
-              by = c("XCMS.id" = "variable_id")) %>%
-    rename_with(~ paste0("SCZ_allvsNOR.", .), .cols = c(All_sample.LM.beta, All_sample.LM.p-value, All_sample.LM.padj,
-                                                         EOSCZ_sample.LM.duration.beta,EOSCZ_sample.LM.duration.p-value, EOSCZ_sample.LM.duration.padj,
-                                                         EOSCZ_sample.LM.dose.beta, EOSCZ_sample.LM.dose.p-value, EOSCZ_sample.LM.dose.padj))
   # Add annotation
   if (file.exists(annt_file)) {
     annt <- read.csv(annt_file, stringsAsFactors = FALSE)
@@ -339,17 +325,23 @@ result <- result %>%
                              "MS1hmdbName", "MS1keggName", "MS2hmd", "MS2kegg",
                              "MS1hmdbID", "MS1hmdbTokegg", "MS1keggID"),
                            colnames(annt))
-    result <- result %>% left_join(annt[, annt_cols], by = "XCMS.id") %>% mutate(model = ion_mode)
+    result <- result %>%
+      left_join(annt[, annt_cols], by = c("variable_id" = "XCMS.id")) %>%
+      mutate(model = ion_mode)
   } else {
     warning("Annotation file not found: ", annt_file)
     result$model <- ion_mode
   }
 
+  # Add expression data
   exp <- extract_expression_data(obj)
-  exp$XCMS.id <- rownames(exp)
-  result <- merge(result, exp, by = "XCMS.id")
+  exp <- as.data.frame(exp)
+  exp$variable_id <- rownames(exp)
+  result <- result %>% left_join(exp, by = "variable_id")
 
-  write.table(result, file = file.path(MASS_DIR, paste0(ion_mode, ".results.txt")),
+  # Write output
+  out_file <- file.path(STAT_DIR, paste0(mode, ".Two_group.Univariate-t.Multivariat_lm.with_annt.txt"))
+  write.table(result, file = out_file,
               row.names = FALSE, sep = "\t", quote = FALSE)
 
   invisible(result)
@@ -383,7 +375,6 @@ cent_params  <- CentWaveParam(snthresh = 6, ppm = 45, peakwidth = c(5, 25), mzdi
 merge_params <- MergeNeighboringPeaksParam(ppm = 45)
 
 # Run for each mode
-
 for (mode in modes_to_run) {
 
   # ---- Phase 1: XCMS ----
@@ -401,53 +392,23 @@ for (mode in modes_to_run) {
   # ---- Phase 3: Statistics ----
   annt_file <- file.path(SEQDATA_DIR, paste0(mode, "-all-identification.csv"))
   stat_res <- run_statistics_for_mode(mode, qc_obj, annt_file, spinfo_stat)
-
-  write.table(stat_res,paste0(STAT_DIR, mode ,'.Two_group.Univariate-t.Multivariat_lm.with_annt.txt', sep = '\t', quote = F)
 }
 
 #-------------------------------------------------------------------------------
-# 5. Select metabolites with only MS2 annotation or MS1 and MS2 annotation match
+# 5. Select Metabolites with Reliable MS1/MS2 Annotations
 #-------------------------------------------------------------------------------
 
-############# check if MS1 and MS2 annotation match #####################
-ms1_ant <- rbind(stat_res %>% dplyr::filter(NumberMS1hmdb>0),
-                 stat_res %>% dplyr::filter(NumberMS1kegg>0)) %>% unique()
-              
-ms2_ant <- stat_res %>% dplyr::filter(MS2Metabolite!='-')
-ms2_ant_only <- ms2_ant %>% dplyr::filter(NumberMS1hmdb==0) %>% dplyr::filter(NumberMS1kegg==0) 
+# Use utils.R select_annt() instead of inline duplicate code
+annt_remain <- select_annt(stat_res)
 
-ms1_2_ant <- rbind(ms1_ant %>% dplyr::filter(MS2Metabolite!='-'),
-                   ms2_ant %>% dplyr::filter(NumberMS1hmdb>0),
-                   ms2_ant %>% dplyr::filter(NumberMS1kegg>0)) %>% unique()
-ms1_2_ant_match <- vector()
-n <- vector()
-for(i in 1:dim(ms1_2_ant)[1]){
-  tmp <- ms1_2_ant[i,]
-  j <- 0
-  if(grepl(tmp$MS2Metabolite, tmp$MS1hmdbName, perl = T)){
-    j <- j+1
-  }
-  if(grepl(tmp$MS2Metabolite, tmp$MS1keggName, perl = T)){
-    j <- j+1
-  }
-  if(tmp$MS2hmd!='-' && tmp$MS2hmd!='' && !is.na(tmp$MS2hmd) && grepl(tmp$MS2hmd, tmp$MS1hmdbID)){
-    j <- j+1
-  }
-  if(tmp$MS2kegg!='-' && tmp$MS2kegg!='' && !is.na(tmp$MS2kegg) && grepl(tmp$MS2kegg, tmp$MS1hmdbTokegg)){
-    j <- j+1
-  }
-  if(tmp$MS2kegg!='-' &&  tmp$MS2kegg!='' && !is.na(tmp$MS2kegg) &&grepl(tmp$MS2kegg, tmp$MS1keggID)){
-    j <- j+1
-  }
-  
-  if(j>0){  n[i] <- 'TRUE'  }
-  else{ n[i] <- 'FALSE'  }
-}
-ms1_2_ant_match <- ms1_2_ant[as.logical(n),]
-              
 annt_remain_file <- file.path(STAT_DIR, 'Two_group.Univariate-t.Multivariat_lm.with_annt.filter.txt')
-write.table(rbind(ms1_2_ant_match, ms2_ant_only), file = annt_remain_file, row.names = F, col.names = T, sep = '\t', quote = F)
+write.table(annt_remain, file = annt_remain_file, row.names = FALSE, col.names = TRUE, sep = '\t', quote = FALSE)
 
+#-------------------------------------------------------------------------------
+# 6. Logging and Cleanup
+#-------------------------------------------------------------------------------
+
+log_session(file.path(META_ROOT, "sessionInfo_2.txt"))
 
 cat("\n========== Pipeline Complete ==========\n")
 cat("Run mode:", RUN_MODE, "\n")
